@@ -1,0 +1,503 @@
+{
+    "success": true,
+    "products": [
+        {
+            "_id": "69ae8f669cd29099791685b0",
+            "name": "Shakkar (Sugar)",
+            "description": "Premium quality refined sugar suitable for tea, sweets and daily cooking.\"",
+            "categoryId": "69a2927917d6e346423da1f5",
+            "categoryName": "Staples",
+            "subCategoryId": "69a2930e17d6e346423da1fa",
+            "subCategoryName": "Salt & Sugar",
+            "brandId": "69ae8d0b9cd29099791685a3",
+            "brandName": "Local Farm",
+            "unitId": {
+                "_id": "69a293de17d6e346423da1ff",
+                "name": "Kilogram"
+            },
+            "unitName": "Kilogram",
+            "productType": "Variant",
+            "minStock": 0,
+            "images": {
+                "thumbnail": "uploads\\products\\image-1773047653806-561177622.png",
+                "gallery": [
+                    "uploads\\products\\images-1773047653807-240741888.jpg",
+                    "uploads\\products\\images-1773047653808-610292218.jpg"
+                ]
+            },
+            "status": true,
+            "isDeleted": false,
+            "createdBy": "699af55b10e090a011429b18",
+            "slug": "shakkar-sugar",
+            "createdAt": "2026-03-09T09:14:14.490Z",
+            "updatedAt": "2026-03-09T09:14:14.829Z",
+            "__v": 0,
+            "qrCode": "/uploads/qrcodes/shakkar-sugar-qr.png",
+            "barcode": "/uploads/barcodes/shakkar-sugar-barcode.png",
+            "ean": "8901083852970",
+            "variants": [
+                {
+                    "_id": "69ae8f669cd29099791685b4",
+                    "productId": "69ae8f669cd29099791685b0",
+                    "sku": "SHA-8619",
+                    "attributes": [
+                        {
+                            "variantTypeId": {
+                                "_id": "69a4d6817653766727a4d5b6",
+                                "name": "weight"
+                            },
+                            "valueId": {
+                                "_id": "69a4d6997653766727a4d5c5",
+                                "name": " 250g"
+                            },
+                            "_id": "69ae8f669cd29099791685b5"
+                        }
+                    ],
+                    "minStock": 5,
+                    "qrCode": "/uploads/qrcodes/shakkar-sugar-69ae8f669cd29099791685b4-qr.png",
+                    "status": true,
+                    "isDeleted": false,
+                    "createdBy": "699af55b10e090a011429b18",
+                    "__v": 0,
+                    "createdAt": "2026-03-09T09:14:14.997Z",
+                    "updatedAt": "2026-03-09T09:14:16.598Z",
+                    "barcode": "/uploads/barcodes/shakkar-sugar-69ae8f669cd29099791685b4-barcode.png",
+                    "ean": "8907222491635",
+                    "pricing": {
+                        "mrp": 15,
+                        "sellingPrice": 14,
+                        "finalSellingPrice": 12,
+                        "costPrice": 9,
+                        "taxId": "69a85cb3c0c02df22db04f22",
+                        "discountType": "Percentage",
+                        "discountValue": 20
+                    },
+                    "inventory": {
+                        "quantity": 30,
+                        "minStock": 5
+                    }
+                },
+                {
+                    "_id": "69ae8f669cd29099791685b6",
+                    "productId": "69ae8f669cd29099791685b0",
+                    "sku": "SHA-1337",
+                    "attributes": [
+                        {
+                            "variantTypeId": {
+                                "_id": "69a4d6817653766727a4d5b6",
+                                "name": "weight"
+                            },
+                            "valueId": {
+                                "_id": "69a4d6a77653766727a4d5cb",
+                                "name": "  500g"
+                            },
+                            "_id": "69ae8f669cd29099791685b7"
+                        }
+                    ],
+                    "minStock": 5,
+                    "qrCode": "/uploads/qrcodes/shakkar-sugar-69ae8f669cd29099791685b6-qr.png",
+                    "status": true,
+                    "isDeleted": false,
+                    "createdBy": "699af55b10e090a011429b18",
+                    "__v": 0,
+                    "createdAt": "2026-03-09T09:14:14.998Z",
+                    "updatedAt": "2026-03-09T09:14:16.768Z",
+                    "barcode": "/uploads/barcodes/shakkar-sugar-69ae8f669cd29099791685b6-barcode.png",
+                    "ean": "8904385298590",
+                    "pricing": {
+                        "mrp": 25,
+                        "sellingPrice": 20,
+                        "finalSellingPrice": 23,
+                        "costPrice": 18,
+                        "taxId": "69a85cb3c0c02df22db04f22",
+                        "discountType": "Percentage",
+                        "discountValue": 10
+                    },
+                    "inventory": {
+                        "quantity": 50,
+                        "minStock": 5
+                    }
+                },
+                {
+                    "_id": "69ae8f669cd29099791685b8",
+                    "productId": "69ae8f669cd29099791685b0",
+                    "sku": "SHA-2524",
+                    "attributes": [
+                        {
+                            "variantTypeId": {
+                                "_id": "69a4d6817653766727a4d5b6",
+                                "name": "weight"
+                            },
+                            "valueId": {
+                                "_id": "69a4d6ad7653766727a4d5d1",
+                                "name": "  1kg"
+                            },
+                            "_id": "69ae8f669cd29099791685b9"
+                        }
+                    ],
+                    "minStock": 5,
+                    "qrCode": "/uploads/qrcodes/shakkar-sugar-69ae8f669cd29099791685b8-qr.png",
+                    "status": true,
+                    "isDeleted": false,
+                    "createdBy": "699af55b10e090a011429b18",
+                    "__v": 0,
+                    "createdAt": "2026-03-09T09:14:14.998Z",
+                    "updatedAt": "2026-03-09T09:14:16.926Z",
+                    "barcode": "/uploads/barcodes/shakkar-sugar-69ae8f669cd29099791685b8-barcode.png",
+                    "ean": "8901775169966",
+                    "pricing": {
+                        "mrp": 45,
+                        "sellingPrice": 40,
+                        "finalSellingPrice": 38,
+                        "costPrice": 32,
+                        "taxId": "69a85cb3c0c02df22db04f22",
+                        "discountType": "Percentage",
+                        "discountValue": 15
+                    },
+                    "inventory": {
+                        "quantity": 30,
+                        "minStock": 5
+                    }
+                }
+            ]
+        },
+        {
+            "_id": "69ac0a65edba37697196eec6",
+            "name": "Serving Tray",
+            "description": "tray",
+            "categoryId": "69ac05e3edba37697196ecf9",
+            "categoryName": "Home & Kitchen",
+            "subCategoryId": "69ac0994edba37697196ee7d",
+            "subCategoryName": "Serving & Storage",
+            "brandName": "",
+            "unitName": "",
+            "productType": "Single",
+            "pricing": {
+                "quantity": 0
+            },
+            "images": {
+                "thumbnail": "uploads\\products\\image-1772882532813-767613975.jpg",
+                "gallery": []
+            },
+            "status": true,
+            "isDeleted": false,
+            "createdBy": "699af55b10e090a011429b18",
+            "slug": "serving-tray",
+            "createdAt": "2026-03-07T11:22:13.414Z",
+            "updatedAt": "2026-03-07T11:22:13.828Z",
+            "__v": 0,
+            "qrCode": "/uploads/qrcodes/serving-tray-qr.png",
+            "barcode": "/uploads/barcodes/serving-tray-barcode.png",
+            "ean": "8903577207143"
+        },
+        {
+            "_id": "69ac096aedba37697196ee2a",
+            "name": "Plastic Bucket",
+            "description": "busket for home ",
+            "categoryId": "69ac05e3edba37697196ecf9",
+            "categoryName": "Home & Kitchen",
+            "subCategoryId": "69ac088cedba37697196edd5",
+            "subCategoryName": "Plastic Household Items",
+            "brandId": "69ac08d8edba37697196ee1c",
+            "brandName": "Cello",
+            "unitId": {
+                "_id": "69ac08f2edba37697196ee21",
+                "name": "Leter"
+            },
+            "unitName": "Leter",
+            "productType": "Single",
+            "pricing": {
+                "quantity": 0
+            },
+            "images": {
+                "thumbnail": "uploads\\products\\image-1772882281236-462033838.jpg",
+                "gallery": [
+                    "uploads\\products\\images-1772882281236-851794650.jpg"
+                ]
+            },
+            "status": true,
+            "isDeleted": false,
+            "createdBy": "699af55b10e090a011429b18",
+            "slug": "plastic-bucket",
+            "createdAt": "2026-03-07T11:18:02.125Z",
+            "updatedAt": "2026-03-07T11:18:02.540Z",
+            "__v": 0,
+            "qrCode": "/uploads/qrcodes/plastic-bucket-qr.png",
+            "barcode": "/uploads/barcodes/plastic-bucket-barcode.png",
+            "ean": "8906797238621"
+        },
+        {
+            "_id": "69ac07cbedba37697196ed6d",
+            "name": "Aata Channi",
+            "description": "aata channi for you r kitchen good to have.",
+            "categoryId": "69ac05e3edba37697196ecf9",
+            "categoryName": "Home & Kitchen",
+            "subCategoryId": "69ac060dedba37697196ecfe",
+            "subCategoryName": "Kitchen Tools",
+            "brandName": "",
+            "unitId": {
+                "_id": "69ac065aedba37697196ed4a",
+                "name": "Pieces"
+            },
+            "unitName": "Pieces",
+            "productType": "Variant",
+            "pricing": {
+                "mrp": null,
+                "sellingPrice": null,
+                "costPrice": null,
+                "discountType": "Fixed",
+                "discountValue": 0,
+                "quantity": null,
+                "sku": "",
+                "minStock": 0
+            },
+            "images": {
+                "thumbnail": "uploads\\products\\image-1772881866537-984685444.jpg",
+                "gallery": [
+                    "uploads\\products\\images-1772881866539-278606630.jpg",
+                    "uploads\\products\\images-1772881866540-220221104.webp"
+                ]
+            },
+            "status": true,
+            "isDeleted": false,
+            "createdBy": "699af55b10e090a011429b18",
+            "slug": "aata-channi",
+            "createdAt": "2026-03-07T11:11:07.137Z",
+            "updatedAt": "2026-03-07T11:11:07.478Z",
+            "__v": 0,
+            "qrCode": "/uploads/qrcodes/aata-channi-qr.png",
+            "barcode": "/uploads/barcodes/aata-channi-barcode.png",
+            "ean": "8909586980091",
+            "variants": []
+        },
+        {
+            "_id": "69a4d74b7653766727a4d5da",
+            "name": "Fresh Paneer",
+            "description": "description goes here",
+            "categoryId": "69a4d6367653766727a4d5a2",
+            "categoryName": "Dairy Productss",
+            "subCategoryId": "69a4d64d7653766727a4d5a7",
+            "subCategoryName": "Paneer & Cheese",
+            "brandId": "69a4d6567653766727a4d5ac",
+            "brandName": "Amul",
+            "unitId": {
+                "_id": "69a4d6607653766727a4d5b1",
+                "name": "Gram (g)"
+            },
+            "productType": "Variant",
+            "pricing": {
+                "mrp": null,
+                "sellingPrice": null,
+                "costPrice": null,
+                "discountType": "Fixed",
+                "discountValue": 0,
+                "quantity": null,
+                "sku": "",
+                "minStock": 0
+            },
+            "images": {
+                "thumbnail": "uploads\\products\\image-1772410699241-316114150.webp",
+                "gallery": []
+            },
+            "status": true,
+            "isDeleted": false,
+            "createdBy": "699af55b10e090a011429b18",
+            "slug": "fresh-paneer",
+            "createdAt": "2026-03-02T00:18:19.739Z",
+            "updatedAt": "2026-03-06T12:37:50.389Z",
+            "__v": 0,
+            "unitName": "Gram (g)",
+            "updatedBy": "699af55b10e090a011429b18",
+            "qrCode": "/uploads/qrcodes/fresh-paneer-qr.png",
+            "barcode": "/uploads/barcodes/fresh-paneer-barcode.png",
+            "ean": "8905694006319",
+            "variants": []
+        },
+        {
+            "_id": "69a2d084204818adc200924c",
+            "name": "Aashirvaad Whole Wheat Atta ",
+            "description": "Premium quality whole wheat atta suitable for daily roti and chapati preparation.",
+            "categoryId": "69a2927917d6e346423da1f5",
+            "categoryName": "Grocery & Staples",
+            "subCategoryId": "69a2cf46204818adc200923b",
+            "subCategoryName": "Flour & Atta",
+            "brandId": "69a2cf83204818adc2009240",
+            "brandName": "Aashirvaad",
+            "unitId": {
+                "_id": "69a293de17d6e346423da1ff",
+                "name": "Kilogram"
+            },
+            "productType": "Variant",
+            "pricing": {
+                "mrp": null,
+                "sellingPrice": null,
+                "costPrice": null,
+                "discountType": "Fixed",
+                "discountValue": 0,
+                "quantity": null,
+                "sku": "",
+                "minStock": 0
+            },
+            "images": {
+                "thumbnail": "uploads\\products\\image-1772277892094-881742283.jpg",
+                "gallery": [
+                    "uploads\\products\\images-1772277892094-93607609.jpg",
+                    "uploads\\products\\images-1772277892095-193202469.jpg",
+                    "uploads\\products\\images-1772277892095-391247065.jpg"
+                ]
+            },
+            "status": true,
+            "isDeleted": false,
+            "createdBy": "699af55b10e090a011429b18",
+            "slug": "aashirvaad-whole-wheat-atta",
+            "createdAt": "2026-02-28T11:24:52.592Z",
+            "updatedAt": "2026-03-06T12:37:50.315Z",
+            "__v": 0,
+            "unitName": "Kilogram",
+            "updatedBy": "699af55b10e090a011429b18",
+            "qrCode": "/uploads/qrcodes/aashirvaad-whole-wheat-atta-qr.png",
+            "barcode": "/uploads/barcodes/aashirvaad-whole-wheat-atta-barcode.png",
+            "ean": "8907437711849",
+            "variants": []
+        },
+        {
+            "_id": "69a2b6e3f1f9938791109e2a",
+            "name": "Tata Iodized Salt ",
+            "description": "Vacuum evaporated iodized salt for daily cooking needs.",
+            "category": "69a2927917d6e346423da1f5",
+            "brandName": "Tata",
+            "unitId": {
+                "_id": "69a293de17d6e346423da1ff",
+                "name": "Kilogram"
+            },
+            "productType": "Variant",
+            "pricing": {
+                "mrp": null,
+                "sellingPrice": null,
+                "costPrice": null,
+                "discountType": "Fixed",
+                "discountValue": 0,
+                "quantity": null,
+                "sku": "",
+                "minStock": 0
+            },
+            "images": {
+                "thumbnail": "uploads\\products\\image-1772271329242-715234116.jpg",
+                "gallery": [
+                    "uploads\\products\\images-1772271329243-674822940.jpg",
+                    "uploads\\products\\images-1772271329243-447854568.jpg",
+                    "uploads\\products\\images-1772271329243-341926877.jpg"
+                ]
+            },
+            "status": true,
+            "isDeleted": false,
+            "createdBy": "699af55b10e090a011429b18",
+            "slug": "tata-iodized-salt",
+            "createdAt": "2026-02-28T09:35:31.862Z",
+            "updatedAt": "2026-03-09T17:17:56.388Z",
+            "__v": 0,
+            "brandId": "69a2947b17d6e346423da204",
+            "categoryId": "69a2927917d6e346423da1f5",
+            "categoryName": "Grocery & Staples",
+            "subCategoryName": "",
+            "unitName": "Kilogram",
+            "updatedBy": "699af55b10e090a011429b18",
+            "barcode": "/uploads/barcodes/tata-iodized-salt-barcode.png",
+            "ean": "8908226287019",
+            "minStock": 0,
+            "qrCode": "/uploads/qrcodes/tata-iodized-salt-qr.png",
+            "variants": [
+                {
+                    "_id": "69af00c49cd29099791687ea",
+                    "productId": "69a2b6e3f1f9938791109e2a",
+                    "sku": "TAT-4447",
+                    "attributes": [
+                        {
+                            "variantTypeId": {
+                                "_id": "69a2950017d6e346423da209",
+                                "name": "Pack Size"
+                            },
+                            "valueId": {
+                                "_id": "69a2950d17d6e346423da212",
+                                "name": "500 Gram"
+                            },
+                            "_id": "69af00c49cd29099791687eb"
+                        }
+                    ],
+                    "minStock": 10,
+                    "status": true,
+                    "isDeleted": false,
+                    "createdBy": "699af55b10e090a011429b18",
+                    "updatedBy": "699af55b10e090a011429b18",
+                    "createdAt": "2026-03-09T17:17:56.812Z",
+                    "updatedAt": "2026-03-09T17:17:57.860Z",
+                    "__v": 0,
+                    "qrCode": "/uploads/qrcodes/tata-iodized-salt-69af00c49cd29099791687ea-qr.png",
+                    "barcode": "/uploads/barcodes/tata-iodized-salt-69af00c49cd29099791687ea-barcode.png",
+                    "ean": "8909732355827",
+                    "pricing": {
+                        "mrp": 15,
+                        "sellingPrice": 15,
+                        "finalSellingPrice": 12,
+                        "costPrice": 8,
+                        "taxId": "69a85ca6c0c02df22db04f19",
+                        "discountType": "Percentage",
+                        "discountValue": 20
+                    },
+                    "inventory": {
+                        "quantity": 100,
+                        "minStock": 10
+                    }
+                },
+                {
+                    "_id": "69af00c69cd29099791687f7",
+                    "productId": "69a2b6e3f1f9938791109e2a",
+                    "sku": "TAT-3312",
+                    "attributes": [
+                        {
+                            "variantTypeId": {
+                                "_id": "69a2950017d6e346423da209",
+                                "name": "Pack Size"
+                            },
+                            "valueId": {
+                                "_id": "69a2951517d6e346423da217",
+                                "name": "1 Kilogram"
+                            },
+                            "_id": "69af00c69cd29099791687f8"
+                        }
+                    ],
+                    "minStock": 10,
+                    "status": true,
+                    "isDeleted": false,
+                    "createdBy": "699af55b10e090a011429b18",
+                    "updatedBy": "699af55b10e090a011429b18",
+                    "createdAt": "2026-03-09T17:17:58.101Z",
+                    "updatedAt": "2026-03-09T17:17:59.042Z",
+                    "__v": 0,
+                    "qrCode": "/uploads/qrcodes/tata-iodized-salt-69af00c69cd29099791687f7-qr.png",
+                    "barcode": "/uploads/barcodes/tata-iodized-salt-69af00c69cd29099791687f7-barcode.png",
+                    "ean": "8906152832686",
+                    "pricing": {
+                        "mrp": 30,
+                        "sellingPrice": 30,
+                        "finalSellingPrice": 28,
+                        "costPrice": 25,
+                        "taxId": "69a85ca6c0c02df22db04f19",
+                        "discountType": "Percentage",
+                        "discountValue": 7
+                    },
+                    "inventory": {
+                        "quantity": 100,
+                        "minStock": 10
+                    }
+                }
+            ]
+        }
+    ],
+    "pagination": {
+        "total": 7,
+        "page": 1,
+        "limit": 10,
+        "pages": 1
+    }
+}
