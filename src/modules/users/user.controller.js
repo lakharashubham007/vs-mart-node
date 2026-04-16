@@ -28,11 +28,11 @@ exports.register = async (req, res) => {
 
 exports.verifyOTP = async (req, res) => {
     try {
-        const { phone, otp } = req.body;
+        const { phone, otp, fcmToken } = req.body;
         if (!phone || !otp) {
             return res.status(400).json({ success: false, message: 'Phone and OTP are required' });
         }
-        const result = await userService.verifyOTP(phone, otp);
+        const result = await userService.verifyOTP(phone, otp, fcmToken);
         res.status(200).json({ success: true, message: 'OTP verified successfully', data: result });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
@@ -119,8 +119,7 @@ exports.updateProfile = async (req, res) => {
         if (name !== undefined) updateData.name = name.trim();
         if (email !== undefined) updateData.email = email.trim();
         if (req.file) {
-            // Store relative path so it can be served as static
-            updateData.profileImage = req.file.path.replace(/\\/g, '/');
+            updateData.profileImage = req.file.path;
         }
 
         if (Object.keys(updateData).length === 0) {
@@ -263,10 +262,17 @@ exports.registerCustomerByAdmin = async (req, res) => {
 
 /**
  * POST /user/fcm-token
- * Save/update the FCM push notification token for this device
+ * Save/update the FCM push notification token for this device.
+ * 
+ * Logic:
+ * 1. If token is provided (Login/Sync): Unbind from ALL roles first to ensure one-device-one-role.
+ * 2. If token is empty (Logout/Clear): Only clear from User role, do NOT unbind others.
  */
 exports.saveFcmToken = async (req, res) => {
     try {
+        const User = require('./user.model');
+        const authService = require('../auth/auth.service');
+        
         const userId = req.user._id;
         const { token } = req.body;
 
@@ -274,11 +280,24 @@ exports.saveFcmToken = async (req, res) => {
             return res.status(400).json({ success: false, message: 'FCM token is required' });
         }
 
-        const User = require('./user.model');
-        await User.findByIdAndUpdate(userId, { fcmToken: token });
+        // -- LOG: Trace start --
+        console.log("Saving token:", token, "CUSTOMER");
+
+        // 1. Strict Switch Logic (Unbind others)
+        await authService.unbindFcmToken(token);
+
+        // 2. BIND: Save to User profile
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        if (!user.fcmTokens.includes(token)) {
+            user.fcmTokens.push(token);
+        }
+        await user.save();
 
         res.status(200).json({ success: true, message: 'FCM token saved successfully' });
     } catch (error) {
+        console.error("🚨 [FCM Error: Customer] Failed to save/sync token:", error);
         res.status(400).json({ success: false, message: error.message });
     }
 };

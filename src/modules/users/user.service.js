@@ -1,5 +1,6 @@
 const User = require('./user.model');
 const jwt = require('jsonwebtoken');
+const authService = require('../auth/auth.service');
 
 exports.loginUser = async (phone) => {
     // Check if user exists
@@ -47,7 +48,7 @@ exports.registerUser = async (userData) => {
     return { message: 'Registration successful. OTP sent.', otp, phone: newUser.phone };
 };
 
-exports.verifyOTP = async (phone, otp) => {
+exports.verifyOTP = async (phone, otp, fcmToken = null) => {
     const user = await User.findOne({ phone });
 
     if (!user) {
@@ -80,6 +81,16 @@ exports.verifyOTP = async (phone, otp) => {
     );
 
     user.refreshToken = refreshToken;
+
+    // Save FCM Token if provided (Strict Multi-Token Binding)
+    if (fcmToken) {
+        await authService.unbindFcmToken(fcmToken);
+        if (!user.fcmTokens.includes(fcmToken)) {
+            user.fcmTokens.push(fcmToken);
+        }
+        console.log("Saved token:", fcmToken, "Customer (via OTP Verify)");
+    }
+
     await user.save();
 
     console.log('Backend verifyOTP returning:', { accessToken, refreshToken, userPhone: user.phone });

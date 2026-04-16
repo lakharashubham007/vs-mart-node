@@ -66,91 +66,42 @@ exports.assignDelivery = async (req, res) => {
         await order.save();
         
         // 5. Trigger Notifications to Delivery Boy
+        const notificationService = require('../../services/notification.service');
+
+        // 5. Trigger Notifications
         try {
-            const shortOrderId = orderId.toString().slice(-6).toUpperCase();
+            const shortOrderId = order._id.toString().slice(-6).toUpperCase();
             
             // --- DELIVERY BOY NOTIFICATION ---
-            const dbNotification = await Notification.create({
+            await notificationService.sendNotification({
                 userId: deliveryBoyId,
+                role: 'delivery_boy',
                 title: '🚚 New Delivery Assigned',
-                message: `You have been assigned a new order #VS${shortOrderId}. Tap to view details and start pickup.`,
-                type: 'NEW_ASSIGNMENT',
-                relatedId: order._id,
-                targetRole: 'delivery_boy',
+                body: `You have been assigned a new order #VS${shortOrderId}. Tap to view details.`,
+                data: {
+                    type: 'NEW_ASSIGNMENT',
+                    screen: 'DeliveryOrderDetails',
+                    orderId: order._id.toString(),
+                    assignmentId: assignment._id.toString()
+                },
                 senderId: req.user?._id,
-                senderName: req.user?.name || 'Admin',
                 senderRole: 'admin'
             });
-
-            socketService.emitToUser(deliveryBoyId, 'new_assignment', {
-                assignment: assignment,
-                notification: dbNotification
-            });
-
-            if (deliveryBoy.fcmToken) {
-                await fcmService.sendToToken(
-                    deliveryBoy.fcmToken,
-                    '🚚 New Delivery Assigned',
-                    `Order #VS${shortOrderId} has been assigned to you.`,
-                    {
-                        type: 'NEW_ASSIGNMENT',
-                        screen: 'DeliveryOrderDetails',
-                        assignmentId: assignment._id.toString()
-                    }
-                );
-            }
 
             // --- CUSTOMER NOTIFICATION (Out for Delivery) ---
-            const userNotification = await Notification.create({
+            await notificationService.sendNotification({
                 userId: order.userId,
+                role: 'customer',
                 title: '🚚 Order Out for Delivery',
-                message: `Your order #VS${shortOrderId} is now out for delivery with ${deliveryBoy.firstName}.`,
-                type: 'ORDER_STATUS_UPDATE',
-                relatedId: order._id,
-                targetRole: 'user',
+                body: `Your order #VS${shortOrderId} is now out for delivery with ${deliveryBoy.firstName}.`,
+                data: {
+                    type: 'ORDER_STATUS_UPDATE',
+                    screen: 'OrderDetails',
+                    orderId: order._id.toString()
+                },
                 senderId: req.user?._id,
-                senderName: req.user?.name || 'Admin',
                 senderRole: 'admin'
             });
-
-            socketService.emitToUser(order.userId, 'new_notification', userNotification);
-
-            // Push to Customer
-            try {
-                // Restricted whitelist as per user request: Only OutForDelivery and Delivered
-                const pushStatuses = ['OutForDelivery', 'Delivered', 'DELIVERED'];
-                const currentStatus = 'OutForDelivery';
-                
-                console.log(`📡 [FCM Debug: Assignment] Checking status: "${currentStatus}" against whitelist...`);
-                
-                const isMatch = pushStatuses.some(s => s.toLowerCase() === currentStatus.toLowerCase());
-
-                if (isMatch) {
-                    const user = await User.findById(order.userId).select('fcmToken').lean();
-                    if (!user) {
-                        console.warn(`❌ [FCM Debug: Assignment] User ${order.userId} not found for push.`);
-                    } else if (!user.fcmToken) {
-                        console.warn(`❌ [FCM Debug: Assignment] Customer ${order.userId} has NO fcmToken in DB.`);
-                    } else {
-                        console.log(`✅ [FCM Debug: Assignment] Sending push to CUSTOMER: ${order.userId} | Token length: ${user.fcmToken.length}`);
-                        const pushResult = await fcmService.sendToToken(
-                            user.fcmToken,
-                            '🚚 Order Out for Delivery',
-                            `Your order #VS${shortOrderId} is now out for delivery with ${deliveryBoy.firstName}.`,
-                            {
-                                type: 'ORDER_STATUS_UPDATE',
-                                screen: 'OrderDetails',
-                                orderId: order._id.toString()
-                            }
-                        );
-                        console.log(`🚀 [FCM Debug: Assignment] Send result:`, JSON.stringify(pushResult));
-                    }
-                } else {
-                    console.log(`ℹ️ [FCM Debug: Assignment] Silencing push for status: "${currentStatus}" (Socket only).`);
-                }
-            } catch (fcmErr) {
-                console.error('🚨 [FCM Debug: Assignment] Push pipeline failure:', fcmErr.message);
-            }
 
         } catch (notifErr) {
             console.error('Failed to send assignment notifications:', notifErr);
@@ -272,11 +223,12 @@ exports.updateAssignmentStatus = async (req, res) => {
         }
 
         // 3. Trigger Targeted Notifications
-        try {
-            const shortId = assignment.orderId.toString().slice(-6).toUpperCase();
-            const orderNum = assignment.orderNumber || shortId;
-            const customerId = assignment.customerId;
+        const notificationService = require('../../services/notification.service');
 
+        // 3. Trigger Targeted Notifications
+        try {
+            const orderNum = assignment.orderNumber || assignment.orderId.toString().slice(-6).toUpperCase();
+            
             // --- ADMIN NOTIFICATION (For PICKED and DELIVERED) ---
             if (status === 'PICKED' || status === 'DELIVERED') {
                 const adminTitle = status === 'PICKED' ? '📦 Order Picked Up' : '✅ Order Delivered';
@@ -284,29 +236,25 @@ exports.updateAssignmentStatus = async (req, res) => {
                     ? `Order #VS${orderNum} has been picked up by ${assignment.deliveryBoyName}.`
                     : `Order #VS${orderNum} has been delivered successfully by ${assignment.deliveryBoyName}.`;
 
-                const adminNotif = await Notification.create({
-                    userId: customerId,
-                    title: adminTitle,
-                    message: adminBody,
-                    type: 'ORDER_STATUS_UPDATE',
-                    relatedId: assignment.orderId,
-                    targetRole: 'admin',
-                    senderId: assignment.deliveryBoyId,
-                    senderName: assignment.deliveryBoyName,
-                    senderRole: 'delivery_boy'
-                });
-
-                socketService.broadcastToAdmin('new_notification', adminNotif);
-
-                // Push to all active Admins
-                const admins = await Admin.find({ fcmToken: { $ne: null }, status: true }).select('fcmToken').lean();
-                if (admins.length > 0) {
-                    const tokens = admins.map(a => a.fcmToken).filter(t => t);
-                    if (tokens.length > 0) {
-                        await fcmService.sendToMultipleTokens(tokens, adminTitle, adminBody, {
-                            type: 'ORDER_STATUS_UPDATE',
-                            screen: 'AdminOrders',
-                            orderId: assignment.orderId.toString()
+                // Fetch all active Super Admins
+                const Role = require('../roles/role.model');
+                const superAdminRole = await Role.findOne({ name: { $regex: /^super\s*admin$/i } }).lean();
+                if (superAdminRole) {
+                    const admins = await Admin.find({ roleId: superAdminRole._id, status: true }).select('_id').lean();
+                    for (const admin of admins) {
+                        await notificationService.sendNotification({
+                            userId: admin._id,
+                            role: 'admin',
+                            title: adminTitle,
+                            body: adminBody,
+                            data: {
+                                type: 'ORDER_STATUS_UPDATE',
+                                screen: 'AdminOrders',
+                                orderId: assignment.orderId.toString()
+                            },
+                            senderId: assignment.deliveryBoyId,
+                            senderName: assignment.deliveryBoyName,
+                            senderRole: 'delivery_boy'
                         });
                     }
                 }
@@ -314,42 +262,20 @@ exports.updateAssignmentStatus = async (req, res) => {
 
             // --- CUSTOMER NOTIFICATION (Only for DELIVERED) ---
             if (status === 'DELIVERED') {
-                const userTitle = '🎉 Order Delivered!';
-                const userBody = `Your order #VS${orderNum} has been delivered. Thank you for shopping with us!`;
-
-                const userNotif = await Notification.create({
-                    userId: customerId,
-                    title: userTitle,
-                    message: userBody,
-                    type: 'ORDER_STATUS_UPDATE',
-                    relatedId: assignment.orderId,
-                    targetRole: 'user',
+                await notificationService.sendNotification({
+                    userId: assignment.customerId,
+                    role: 'customer',
+                    title: '🎉 Order Delivered!',
+                    body: `Your order #VS${orderNum} has been delivered. Thank you!`,
+                    data: {
+                        type: 'ORDER_STATUS_UPDATE',
+                        screen: 'OrderDetails',
+                        orderId: assignment.orderId.toString()
+                    },
                     senderId: assignment.deliveryBoyId,
                     senderName: assignment.deliveryBoyName,
                     senderRole: 'delivery_boy'
                 });
-
-                socketService.emitToUser(customerId, 'new_notification', userNotif);
-
-                // Push to Customer
-                try {
-                    const user = await User.findById(customerId).select('fcmToken').lean();
-                    console.log(`📡 [FCM Debug: Delivery Completion] Status: "${status}"`);
-                    
-                    if (user?.fcmToken) {
-                        console.log(`✅ [FCM Debug: Delivery Completion] Sending push to CUSTOMER: ${customerId}`);
-                        const pushResult = await fcmService.sendToToken(user.fcmToken, userTitle, userBody, {
-                            type: 'ORDER_STATUS_UPDATE',
-                            screen: 'OrderDetails',
-                            orderId: assignment.orderId.toString()
-                        });
-                        console.log(`🚀 [FCM Debug: Delivery Completion] Send result:`, pushResult);
-                    } else {
-                        console.warn(`❌ [FCM Debug: Delivery Completion] Customer ${customerId} has NO fcmToken in DB.`);
-                    }
-                } catch (fcmErr) {
-                    console.error('🚨 [FCM Debug: Delivery Completion] Push failed:', fcmErr.message);
-                }
             }
         } catch (notifErr) {
             console.error('Notification failed during assignment status update:', notifErr);

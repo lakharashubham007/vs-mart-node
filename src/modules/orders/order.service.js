@@ -59,52 +59,39 @@ const createOrder = async (orderData) => {
 
         await session.commitTransaction();
 
-        // 3. Broadcast to admin room
-        socketService.broadcastNewOrder(populatedOrder || order);
-
-        // 4. Save admin notification to DB (for the notifications page history).
+        // 4. Send Targeted Notifications
         try {
-            const shortId = order._id.toString().slice(-6).toUpperCase();
-            await Notification.create({
-                userId: orderData.userId,
-                title: '🛒 New Order Received',
-                message: `A new order #VS${shortId} has been placed and is waiting for confirmation.`,
-                type: 'ORDER_STATUS_UPDATE',
-                relatedId: order._id,
-                targetRole: 'admin'
-            });
-
-            // --- Admin Push Notification via FCM (Filtered by Role) ---
-            const Admin = require('../admins/admin.model');
+            const notificationService = require('../../services/notification.service');
             const Role = require('../roles/role.model');
+            const Admin = require('../admins/admin.model');
+            const shortId = order._id.toString().slice(-6).toUpperCase();
 
-            // Find role IDs for management staff
-            const roles = await Role.find({ name: { $in: ['Super Admin', 'Admin'] } }).select('_id');
-            const adminRoleIds = roles.map(r => r._id);
+            // --- ADMIN NOTIFICATION (Fetch all active Super Admins/Admins) ---
+            const targetRoles = await Role.find({ name: { $regex: /admin/i } }).select('_id').lean();
+            const adminRoleIds = targetRoles.map(r => r._id);
 
             const admins = await Admin.find({ 
                 roleId: { $in: adminRoleIds },
-                fcmToken: { $ne: null }, 
                 status: true 
-            }).select('fcmToken').lean();
+            }).select('_id').lean();
             
-            if (admins.length > 0) {
-                const adminTokens = admins.map(a => a.fcmToken).filter(t => t);
-                if (adminTokens.length > 0) {
-                    await fcmService.sendToMultipleTokens(
-                        adminTokens,
-                        '🛒 New Order Placed',
-                        `Order #VS${shortId} has been placed. Tap to view and process.`,
-                        {
-                            type: 'NEW_ORDER',
-                            screen: 'AdminOrders',
-                            orderId: order._id.toString(),
-                        }
-                    );
-                }
+            for (const admin of admins) {
+                await notificationService.sendNotification({
+                    userId: admin._id,
+                    role: 'admin',
+                    title: '🛒 New Order Received',
+                    body: `A new order #VS${shortId} has been placed. Tap to view.`,
+                    data: {
+                        type: 'NEW_ORDER',
+                        screen: 'AdminOrders',
+                        orderId: order._id.toString(),
+                    },
+                    senderId: orderData.userId,
+                    senderRole: 'customer'
+                });
             }
         } catch (e) {
-            console.error('Failed to create/send admin new-order notification:', e);
+            console.error('Failed to send admin new-order notification:', e);
         }
 
         return order;
@@ -251,107 +238,49 @@ const updateOrderStatus = async (orderId, status, sender = null) => {
             Cancelled: 'Cancelled',
             OutOfStock: 'Out of Stock',
         };
-        const shortId = order._id.toString().slice(-6).toUpperCase();
+        // Target labels and logic
+        const notificationService = require('../../services/notification.service');
         const statusLabel = STATUS_LABELS[status] || status;
 
-        // --- Sender Info Extraction ---
-        const senderName = sender?.name || 'System';
-        const senderId   = sender?._id;
-        const senderRole = sender?.role || 'shop_admin';
-
-        // Notification for the CUSTOMER (shown in mobile app)
-        const userNotif = await Notification.create({
+        // --- CUSTOMER NOTIFICATION ---
+        await notificationService.sendNotification({
             userId: order.userId,
+            role: 'customer',
             title: `Order ${statusLabel}`,
-            message: `Your order #VS${shortId} is now ${statusLabel}.`,
-            type: 'ORDER_STATUS_UPDATE',
-            relatedId: order._id,
-            targetRole: 'user',
-            senderId,
-            senderName,
-            senderRole
+            body: `Your order #VS${shortId} is now ${statusLabel}.`,
+            data: {
+                type: 'ORDER_STATUS_UPDATE',
+                screen: 'OrderDetails',
+                orderId: order._id.toString(),
+            },
+            senderId: sender?._id,
+            senderName: sender?.name || 'System',
+            senderRole: sender?.role || 'system'
         });
-        socketService.emitToUser(order.userId, 'new_notification', userNotif);
 
-        // Push notification via FCM (works even when app is killed)
+        // --- ADMINS NOTIFICATION (Restricted to Super Admin for updates) ---
         try {
-            // Restricted whitelist as per user request: Only OutForDelivery and Delivered
-            const pushStatuses = ['OutForDelivery', 'Delivered', 'DELIVERED'];
-            const normalizedStatus = status.trim();
-            
-            console.log(`📡 [FCM Debug] Checking status: "${normalizedStatus}" against whitelist...`);
-            
-            const isMatch = pushStatuses.some(s => s.toLowerCase() === normalizedStatus.toLowerCase());
-
-            if (isMatch) {
-                const userForFCM = await User.findById(order.userId).select('fcmToken').lean();
-                if (!userForFCM) {
-                    console.warn(`❌ [FCM Debug] User ${order.userId} not found for push.`);
-                } else if (!userForFCM.fcmToken) {
-                    console.warn(`❌ [FCM Debug] User ${order.userId} has NO fcmToken in DB. Registration might have failed.`);
-                } else {
-                    console.log(`✅ [FCM Debug] Sending push to user: ${order.userId} | Token length: ${userForFCM.fcmToken.length}`);
-                    const result = await fcmService.sendToToken(
-                        userForFCM.fcmToken,
-                        `Order ${statusLabel}`,
-                        `Your order #VS${shortId} is now ${statusLabel}.`,
-                        {
-                            type: 'ORDER_STATUS_UPDATE',
-                            screen: 'OrderDetails',
-                            orderId: order._id.toString(),
-                        }
-                    );
-                    console.log(`🚀 [FCM Debug] Send result:`, JSON.stringify(result));
-                }
-            } else {
-                console.log(`ℹ️ [FCM Debug] Silencing push for status: "${normalizedStatus}" (Socket only). To enable, add to pushStatuses whitelist.`);
-            }
-        } catch (fcmErr) {
-            console.error('🚨 [FCM Debug] Critical failure in push pipeline:', fcmErr.message);
-        }
-
-        // Notification for ADMIN panel (shown in admin notifications page)
-        const adminNotif = await Notification.create({
-            userId: order.userId,
-            title: `Order ${statusLabel}`,
-            message: `Order #VS${shortId} has been updated to "${statusLabel}".`,
-            type: 'ORDER_STATUS_UPDATE',
-            relatedId: order._id,
-            targetRole: 'admin',
-            senderId,
-            senderName,
-            senderRole
-        });
-        socketService.broadcastToAdmin('new_notification', adminNotif);
-
-        // --- Multi-Admin Push Notification via FCM (Filtered by Role) ---
-        try {
-            const Admin = require('../admins/admin.model');
             const Role = require('../roles/role.model');
-
-            // Find role IDs for management staff
-            const roles = await Role.find({ name: { $in: ['Super Admin', 'Admin'] } }).select('_id');
-            const adminRoleIds = roles.map(r => r._id);
-
-            const admins = await Admin.find({ 
-                roleId: { $in: adminRoleIds },
-                fcmToken: { $ne: null }, 
-                status: true 
-            }).select('fcmToken').lean();
+            const Admin = require('../admins/admin.model');
+            const superAdminRole = await Role.findOne({ name: { $regex: /^super\s*admin$/i } }).lean();
             
-            if (admins.length > 0) {
-                const adminTokens = admins.map(a => a.fcmToken).filter(t => t);
-                if (adminTokens.length > 0) {
-                    await fcmService.sendToMultipleTokens(
-                        adminTokens,
-                        `Order ${statusLabel}`,
-                        `Order #VS${shortId} has been updated to "${statusLabel}".`,
-                        {
+            if (superAdminRole) {
+                const admins = await Admin.find({ roleId: superAdminRole._id, status: true }).select('_id').lean();
+                for (const admin of admins) {
+                    await notificationService.sendNotification({
+                        userId: admin._id,
+                        role: 'admin',
+                        title: `Order ${statusLabel}`,
+                        body: `Order #VS${shortId} has been updated to "${statusLabel}".`,
+                        data: {
                             type: 'ORDER_STATUS_UPDATE',
                             screen: 'AdminOrders',
                             orderId: order._id.toString(),
-                        }
-                    );
+                        },
+                        senderId: sender?._id,
+                        senderName: sender?.name || 'System',
+                        senderRole: sender?.role || 'system'
+                    });
                 }
             }
         } catch (fcmAdminErr) {

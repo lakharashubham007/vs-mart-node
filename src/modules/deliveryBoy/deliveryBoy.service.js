@@ -7,7 +7,7 @@ const path = require('path');
  */
 exports.createDeliveryBoy = async (data, file) => {
     if (file) {
-        data.profileImage = file.path.replace(/\\/g, '/');
+        data.profileImage = file.path;
     }
     const deliveryBoy = await DeliveryBoy.create(data);
     return deliveryBoy;
@@ -63,11 +63,11 @@ exports.updateDeliveryBoy = async (id, data, file) => {
     if (!deliveryBoy) throw new Error('Delivery Boy not found');
 
     if (file) {
-        // Delete old image if exists
-        if (deliveryBoy.profileImage && fs.existsSync(deliveryBoy.profileImage)) {
+        // Delete old image if exists locally (only if not a URL)
+        if (deliveryBoy.profileImage && !deliveryBoy.profileImage.startsWith('http') && fs.existsSync(deliveryBoy.profileImage)) {
             try { fs.unlinkSync(deliveryBoy.profileImage); } catch (e) { console.error('Image delete error:', e); }
         }
-        data.profileImage = file.path.replace(/\\/g, '/');
+        data.profileImage = file.path;
     }
 
     // Use Object.assign and save() to trigger pre-save hooks (like password hashing)

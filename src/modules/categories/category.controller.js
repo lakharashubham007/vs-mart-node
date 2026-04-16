@@ -1,4 +1,5 @@
 const categoryService = require('./category.service');
+const { getFullImageUrl } = require('../../utils/image.util');
 
 exports.createCategory = async (req, res) => {
     try {
@@ -59,8 +60,7 @@ exports.updateCategoryStatus = async (req, res) => {
 
 exports.getPublicCategoryImage = async (req, res) => {
     try {
-        const imagePath = await categoryService.getPublicCategoryImage(req.params.id);
-        res.sendFile(imagePath);
+        await categoryService.getPublicCategoryImage(req.params.id, res);
     } catch (error) {
         const status = error.message === 'Image not found' || error.message === 'Image file not found' ? 404 : 500;
         res.status(status).json({ message: error.message });

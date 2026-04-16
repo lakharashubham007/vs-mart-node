@@ -60,7 +60,7 @@ const androidConfig = (title, body) => ({
         icon: 'ic_launcher',
         color: '#1A6B3A',
         visibility: 'public',
-        notificationPriority: 'PRIORITY_MAX',
+        notificationPriority: 'priority_max', // Ensured priority is max for heads-up alerts
     },
 });
 
@@ -123,12 +123,14 @@ const sendToMultipleTokens = async (fcmTokens, title, body, data = {}) => {
 
     for (const batch of batches) {
         try {
+            console.log("Target tokens:", batch); // User trace log
             const response = await admin.messaging().sendEachForMulticast({
                 tokens: batch,
                 notification: { title, body },
                 data: sanitizeData(data),
                 android: androidConfig(title, body),
             });
+            console.log("FCM response:", JSON.stringify(response)); // User trace log
 
             successCount += response.successCount;
             failureCount += response.failureCount;
@@ -136,6 +138,7 @@ const sendToMultipleTokens = async (fcmTokens, title, body, data = {}) => {
             response.responses.forEach((resp, idx) => {
                 if (!resp.success) {
                     const code = resp.error?.code;
+                    console.warn(`[FCMService] Individual failure for token ${batch[idx].slice(-6)}:`, resp.error?.message);
                     if (
                         code === 'messaging/registration-token-not-registered' ||
                         code === 'messaging/invalid-registration-token'

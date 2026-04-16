@@ -89,3 +89,29 @@ exports.getPublicProfileImage = async (req, res) => {
         res.status(status).json({ message: error.message });
     }
 };
+
+exports.updateFcmToken = async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+        const result = await authService.updateFcmToken(req.user._id, fcmToken);
+        res.json({
+            success: true,
+            message: 'FCM token updated successfully',
+            data: result
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+exports.logout = async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+        await authService.logout(req.user._id, fcmToken);
+        res.json({
+            success: true,
+            message: 'Logged out successfully'
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

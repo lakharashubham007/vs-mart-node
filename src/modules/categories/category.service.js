@@ -90,15 +90,19 @@ exports.updateCategoryStatus = async (id, status, userId) => {
 
 const Subcategory = require('../subcategories/subcategory.model');
 
-exports.getPublicCategoryImage = async (id) => {
+exports.getPublicCategoryImage = async (id, res) => {
     const category = await Category.findById(id);
     if (!category || !category.image) {
         throw new Error('Image not found');
     }
 
+    if (category.image.startsWith('http')) {
+        return res.redirect(category.image);
+    }
+
     const imagePath = path.join(__dirname, '../../../../', category.image);
     if (fs.existsSync(imagePath)) {
-        return imagePath;
+        return res.sendFile(imagePath);
     } else {
         throw new Error('Image file not found');
     }

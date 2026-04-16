@@ -1,5 +1,6 @@
 const Admin = require('../admins/admin.model');
 const DeliveryBoy = require('../deliveryBoy/deliveryBoy.model');
+const User = require('../users/user.model');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
@@ -26,10 +27,14 @@ exports.login = async (email, password, fcmToken) => {
         throw new Error('Invalid credentials');
     }
 
-    // Save FCM Token if provided
+    // Save FCM Token if provided (Strict Multi-Token Binding)
     if (fcmToken) {
-        admin.fcmToken = fcmToken;
+        await exports.unbindFcmToken(fcmToken);
+        if (!admin.fcmTokens.includes(fcmToken)) {
+            admin.fcmTokens.push(fcmToken);
+        }
         await admin.save();
+        console.log("Saved token:", fcmToken, "Admin (via Login)");
     }
 
     const permissions = admin.roleId?.permissionIds.map(p => p.key) || [];
@@ -69,10 +74,14 @@ exports.deliveryBoyLogin = async (email, password, fcmToken) => {
         throw new Error('Invalid credentials');
     }
 
-    // Save FCM Token if provided
+    // Save FCM Token if provided (Strict Multi-Token Binding)
     if (fcmToken) {
-        boy.fcmToken = fcmToken;
+        await exports.unbindFcmToken(fcmToken);
+        if (!boy.fcmTokens.includes(fcmToken)) {
+            boy.fcmTokens.push(fcmToken);
+        }
         await boy.save();
+        console.log("Saved token:", fcmToken, "DeliveryBoy (via Login)");
     }
 
     const token = jwt.sign(
@@ -133,10 +142,14 @@ exports.staffLogin = async (email, password, fcmToken) => {
         isDeliveryBoy = true;
     }
 
-    // Save FCM Token if provided
+    // Save FCM Token if provided (Strict Multi-Token Binding)
     if (fcmToken) {
-        user.fcmToken = fcmToken;
+        await exports.unbindFcmToken(fcmToken);
+        if (!user.fcmTokens.includes(fcmToken)) {
+            user.fcmTokens.push(fcmToken);
+        }
         await user.save();
+        console.log("Saved token:", fcmToken, `${role} (via Unified Login)`);
     }
 
     const token = jwt.sign(
@@ -213,4 +226,57 @@ exports.getPublicProfileImage = async (id) => {
     } else {
         throw new Error('Image file not found');
     }
+};
+
+/**
+ * Helper to ensure a token is removed from ALL other possible accounts
+ * before being assigned to a new one. This prevents "ghost" notifications.
+ * SAFETY: Skips if token is empty to prevent global unbind on logout.
+ */
+exports.unbindFcmToken = async (fcmToken) => {
+    if (!fcmToken || fcmToken === '') return;
+    try {
+        console.log(`📡 [FCM Unbind] Clearing token ${fcmToken.slice(-6)} from all other profiles...`);
+        
+        await Promise.all([
+            Admin.updateMany({ fcmToken }, { fcmToken: null }),
+            DeliveryBoy.updateMany({ fcmToken }, { fcmToken: null }),
+            User.updateMany({ fcmToken }, { fcmToken: null })
+        ]);
+        
+        console.log(`✅ [FCM Unbind] Token freed from any old associations.`);
+    } catch (e) {
+        console.error('🚨 [FCM Unbind] Failed to clear token associations:', e);
+    }
+};
+
+exports.updateFcmToken = async (userId, fcmToken) => {
+    if (!userId) throw new Error('User ID is required');
+    
+    // Shared Binding: save token without clearing it from other roles
+    if (fcmToken && fcmToken !== '') {
+        // unbinding disabled to support multi-role device sessions
+    }
+
+    // 1. Try updating Admin collection
+    let user = await Admin.findById(userId);
+    if (user) {
+        console.log("Saving token:", fcmToken, "Admin");
+        user.fcmToken = fcmToken || null;
+        await user.save();
+        console.log("Saved user:", { id: user._id, name: user.name, fcmToken: user.fcmToken });
+        return { role: 'Admin' };
+    }
+
+    // 2. Try updating DeliveryBoy collection
+    user = await DeliveryBoy.findById(userId);
+    if (user) {
+        console.log("Saving token:", fcmToken, "DeliveryBoy");
+        user.fcmToken = fcmToken || null;
+        await user.save();
+        console.log("Saved user:", { id: user._id, name: user.firstName, fcmToken: user.fcmToken });
+        return { role: 'DeliveryBoy' };
+    }
+
+    throw new Error('User not found in any staff collection');
 };

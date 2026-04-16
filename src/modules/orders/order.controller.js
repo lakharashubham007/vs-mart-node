@@ -71,7 +71,7 @@ exports.updateOrderStatus = async (req, res) => {
 
 exports.getAdminOrders = async (req, res) => {
     try {
-        const { page = 1, limit = 10, status } = req.query;
+        const { page = 1, limit = 10, status, search } = req.query;
         const filter = {};
 
         if (status && status !== 'All') {
@@ -82,6 +82,23 @@ exports.getAdminOrders = async (req, res) => {
             } else {
                 filter.orderStatus = status;
             }
+        }
+
+        if (search) {
+            const User = require('../users/user.model');
+            const users = await User.find({
+                $or: [
+                    { name: { $regex: search, $options: 'i' } },
+                    { phone: { $regex: search, $options: 'i' } }
+                ]
+            }).select('_id');
+
+            filter.$or = [
+                { orderId: { $regex: search, $options: 'i' } },
+                { userId: { $in: users.map(u => u._id) } },
+                { 'shippingAddress.phone': { $regex: search, $options: 'i' } },
+                { 'shippingAddress.receiverName': { $regex: search, $options: 'i' } }
+            ];
         }
 
         const result = await orderService.getOrdersAdmin(filter, parseInt(page), parseInt(limit));

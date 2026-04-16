@@ -1,4 +1,5 @@
 const brandService = require('./brand.service');
+const { getFullImageUrl } = require('../../utils/image.util');
 
 exports.createBrand = async (req, res) => {
     try {
@@ -59,8 +60,7 @@ exports.updateBrandStatus = async (req, res) => {
 
 exports.getPublicBrandLogo = async (req, res) => {
     try {
-        const imagePath = await brandService.getPublicBrandLogo(req.params.id);
-        res.sendFile(imagePath);
+        await brandService.getPublicBrandLogo(req.params.id, res);
     } catch (error) {
         const status = error.message === 'Logo not found' || error.message === 'Logo file not found' ? 404 : 500;
         res.status(status).json({ message: error.message });

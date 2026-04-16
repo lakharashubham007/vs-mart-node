@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 const Product = require('./product.model');
 const ProductVariant = require('./productVariant.model');
 const Category = require('../categories/category.model');
@@ -9,6 +9,7 @@ const { generateProductQRCode } = require('../../utils/qr.util');
 const { generateRandomEan, generateEanBarcode } = require('../../utils/barcode.util');
 const stockService = require('../stock/stock.service');
 const StockIn = require('../stock/stockIn.model');
+const { getFullImageUrl, getFullImageUrls } = require('../../utils/image.util');
 
 // Helper to generate SKU if not provided
 const generateSKU = () => {
@@ -55,7 +56,8 @@ const injectStockData = async (products) => {
                 quantity: grandTotal,
                 batches: baseStock.batches || []
             };
-        } else if (product.variants) {
+        } else if (product.variants && product.variants.length > 0) {
+            let leadVariantFound = false;
             product.variants.forEach(variant => {
                 const vId = variant._id.toString();
                 const vStock = pStock[vId] || { quantity: 0, pricing: {}, batches: [] };
@@ -73,6 +75,14 @@ const injectStockData = async (products) => {
                     batches: vStock.batches
                 };
                 variant.inventory = { quantity: variantQty, minStock: variant.minStock };
+
+                // If this is the first variant with stock, or we haven't found any stock yet and it's the first variant, 
+                // promote its pricing to the top level for preview/filtering.
+                if (!leadVariantFound && (variantQty > 0 || !product.pricing)) {
+                    product.pricing = { ...variant.pricing };
+                    // If this one actually had stock, mark it as the definitive lead
+                    if (variantQty > 0) leadVariantFound = true;
+                }
             });
             
             // Also check for any 'base' stock that might exist on a variant product
@@ -300,15 +310,107 @@ exports.createProduct = async (productData, files, user) => {
     return { product, variantsCreated: createdVariants.length };
 };
 
-exports.getProducts = async (query, page = 1, limit = 10) => {
+exports.getProducts = async (query, page = 1, limit = 10, filterOptions = {}) => {
     const skip = (page - 1) * limit;
 
-    const products = await Product.find(query)
-        .populate('unitId', 'name')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
+    // MANDATORY Casting for aggregation
+    ['categoryId', 'subCategoryId', 'brandId', 'tenantId'].forEach(f => {
+        if (query[f] && typeof query[f] === 'string' && mongoose.Types.ObjectId.isValid(query[f])) {
+            query[f] = new mongoose.Types.ObjectId(query[f]);
+        }
+    });
+    // Build the aggregation pipeline for powerful server-side filtering
+    const pipeline = [
+        { $match: query },
+        // Lookup stock/pricing data
+        {
+            $lookup: {
+                from: 'stockins',
+                let: { pId: '$_id' },
+                pipeline: [
+                    { 
+                        $match: { 
+                            $expr: { $eq: ['$productId', '$$pId'] },
+                            isDeleted: false,
+                            status: true,
+                            currentQuantity: { $gt: 0 }
+                        } 
+                    },
+                    { $sort: { createdAt: 1 } } // FIFO
+                ],
+                as: 'activeStock'
+            }
+        },
+        // Add calculated fields for filtering/sorting
+        {
+            $addFields: {
+                leadBatch: { $first: '$activeStock' },
+                totalQuantity: { $sum: '$activeStock.currentQuantity' }
+            }
+        },
+        {
+            $addFields: {
+                currentPrice: { 
+                    $ifNull: [
+                        '$leadBatch.pricing.finalSellingPrice', 
+                        { $ifNull: ['$leadBatch.pricing.sellingPrice', 0] }
+                    ]
+                },
+                mrp: { $ifNull: ['$leadBatch.pricing.mrp', 0] },
+                discountValue: { $ifNull: ['$leadBatch.pricing.discountValue', 0] }
+            }
+        }
+    ];
+
+    // Apply Price Range Filters
+    if (!isNaN(filterOptions.minPrice)) {
+        pipeline.push({ $match: { currentPrice: { $gte: filterOptions.minPrice } } });
+    }
+    if (!isNaN(filterOptions.maxPrice)) {
+        pipeline.push({ $match: { currentPrice: { $lte: filterOptions.maxPrice } } });
+    }
+
+    // Apply Stock/Discount Filters
+    if (filterOptions.onlyInStock) {
+        pipeline.push({ $match: { totalQuantity: { $gt: 0 } } });
+    }
+    if (filterOptions.discountOnly) {
+        pipeline.push({ $match: { discountValue: { $gt: 0 } } });
+    }
+
+    // Apply Sorting
+    let sortQuery = { createdAt: -1 };
+    if (filterOptions.sort) {
+        switch (filterOptions.sort) {
+            case 'price_low': sortQuery = { currentPrice: 1 }; break;
+            case 'price_high': sortQuery = { currentPrice: -1 }; break;
+            case 'newest': sortQuery = { createdAt: -1 }; break;
+            case 'popularity': sortQuery = { discountValue: -1 }; break;
+        }
+    }
+    pipeline.push({ $sort: sortQuery });
+
+    // Execute with Facet for pagination
+    const finalPipeline = [
+        ...pipeline,
+        {
+            $facet: {
+                metadata: [{ $count: 'total' }],
+                data: [{ $skip: skip }, { $limit: parseInt(limit) }]
+            }
+        }
+    ];
+
+    const aggregationResult = await Product.aggregate(finalPipeline);
+    const resultProducts = aggregationResult[0].data;
+    const total = aggregationResult[0].metadata[0]?.total || 0;
+
+    // Convert to lean objects and attach variants for those fetched
+    const products = resultProducts.map(p => ({
+        ...p,
+        totalStock: p.totalQuantity,
+        pricing: p.leadBatch ? { ...p.leadBatch.pricing, quantity: p.totalQuantity } : undefined
+    }));
 
     // Fetch and attach variants for products that have them
     const variantProducts = products.filter(p => p.productType === 'Variant');
@@ -319,7 +421,6 @@ exports.getProducts = async (query, page = 1, limit = 10) => {
             .populate('attributes.valueId', 'name')
             .lean();
 
-        // Intersect them back and sort
         products.forEach(product => {
             if (product.productType === 'Variant') {
                 const variants = allVariants.filter(v => v.productId.toString() === product._id.toString());
@@ -328,10 +429,9 @@ exports.getProducts = async (query, page = 1, limit = 10) => {
         });
     }
 
-    // 4. Inject Aggregated Stock Data (Dynamic Merging)
+    // Still call injectStockData for full consistency (mapping batches to variants, etc)
+    // but now the set of products represents the correctly filtered total.
     await injectStockData(products);
-
-    const total = await Product.countDocuments(query);
 
     return {
         products,
@@ -800,8 +900,6 @@ exports.getProductByEan = async (ean) => {
         return { product, variantId: variant._id };
     }
 
-    // 2. Check Parent Products
-    const product = await Product.findOne({ ean, isDeleted: false });
     if (product) {
         const fullProduct = await this.getProductDetailsForPublic(product.slug);
         return { product: fullProduct, variantId: null };
@@ -824,4 +922,60 @@ exports.getProductDetailsForPublicById = async (id) => {
         ...product._doc,
         variants: sortVariantsByValue(variants)
     });
+};
+
+exports.getProductDetailsForPublic = async (slug) => {
+    const product = await Product.findOne({ slug, isDeleted: false }).populate('unitId');
+    if (!product) return null;
+
+    const variants = await ProductVariant.find({ productId: product._id, isDeleted: false })
+        .populate({
+            path: 'attributes.variantTypeId attributes.valueId',
+            select: 'name valueName value'
+        });
+
+    // Inject stock
+    const fullProduct = await injectStockData({
+        ...product._doc,
+        variants: sortVariantsByValue(variants)
+    });
+
+    // Extract display-ready structure
+    const isSingle = fullProduct.productType === 'Single';
+    let mrp = fullProduct.pricing?.mrp || 0;
+    let price = fullProduct.pricing?.finalSellingPrice || fullProduct.pricing?.sellingPrice || 0;
+    let variantText = '';
+
+    // If it's a variant product and top pricing is zero/missing, pick from the first variant with stock
+    if (!isSingle && (price === 0 || !price)) {
+        const availableVariant = (fullProduct.variants || []).find(v => (v.pricing?.quantity || 0) > 0) || (fullProduct.variants || [])[0];
+        if (availableVariant) {
+            mrp = availableVariant.pricing?.mrp || 0;
+            price = availableVariant.pricing?.finalSellingPrice || availableVariant.pricing?.sellingPrice || 0;
+            
+            // Generate a descriptive text for the lead variant (e.g. "500g")
+            variantText = availableVariant.attributes?.map(a => a.valueId?.name || '').join(' ') || '';
+        }
+    }
+
+    const result = {
+        id: fullProduct._id,
+        name: fullProduct.name,
+        description: fullProduct.description || '',
+        slug: fullProduct.slug,
+        image: getFullImageUrl(fullProduct.images?.thumbnail),
+        gallery: getFullImageUrls(fullProduct.images?.gallery),
+        mrp,
+        price,
+        discountPercentage: 0,
+        variantText,
+        variants: fullProduct.variants || [],
+        isSingle
+    };
+
+    if (result.mrp > result.price) {
+        result.discountPercentage = Math.round(((result.mrp - result.price) / result.mrp) * 100);
+    }
+
+    return result;
 };

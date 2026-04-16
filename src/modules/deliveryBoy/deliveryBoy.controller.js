@@ -1,4 +1,5 @@
 const deliveryBoyService = require('./deliveryBoy.service');
+const { getFullImageUrl } = require('../../utils/image.util');
 
 exports.createDeliveryBoy = async (req, res) => {
     try {

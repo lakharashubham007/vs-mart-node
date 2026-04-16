@@ -5,7 +5,7 @@ const ApiError = require('../../utils/ApiError');
 const createOffer = catchAsync(async (req, res) => {
     const offerData = {
         ...req.body,
-        image: req.file ? `uploads/offers/${req.file.filename}` : null,
+        image: req.file ? req.file.path : null,
         createdBy: req.user._id
     };
 
@@ -39,7 +39,7 @@ const getOffer = catchAsync(async (req, res) => {
 const updateOffer = catchAsync(async (req, res) => {
     const updateBody = { ...req.body, updatedBy: req.user._id };
     if (req.file) {
-        updateBody.image = `uploads/offers/${req.file.filename}`;
+        updateBody.image = req.file.path;
     }
     const offer = await offerService.updateOfferById(req.params.offerId, updateBody);
     res.send({ offer });

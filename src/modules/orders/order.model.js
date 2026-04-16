@@ -67,6 +67,15 @@ orderSchema.pre('save', async function () {
         this.orderId = 'VS' + Math.floor(100000 + Math.random() * 900000);
     }
 
+    // [LEGACY FALLBACK]: Ensure all items have finalSellingPrice (fix for older order validation)
+    if (this.items && this.items.length > 0) {
+        this.items.forEach(item => {
+            if (item.finalSellingPrice == null) {
+                item.finalSellingPrice = item.price;
+            }
+        });
+    }
+
     // [DB-LEVEL SYNC]: Automatically mark COD orders as PAID when status changes to Delivered
     if (this.isModified('orderStatus') && this.orderStatus === 'Delivered' && this.paymentMethod === 'COD') {
         this.paymentStatus = 'PAID';

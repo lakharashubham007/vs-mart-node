@@ -5,7 +5,7 @@ const ApiError = require('../../utils/ApiError');
 const createBanner = catchAsync(async (req, res) => {
     const bannerData = {
         ...req.body,
-        image: req.file ? `uploads/banners/${req.file.filename}` : null,
+        image: req.file ? req.file.path : null,
         createdBy: req.user._id
     };
 
@@ -39,7 +39,7 @@ const getBanner = catchAsync(async (req, res) => {
 const updateBanner = catchAsync(async (req, res) => {
     const updateBody = { ...req.body, updatedBy: req.user._id };
     if (req.file) {
-        updateBody.image = `uploads/banners/${req.file.filename}`;
+        updateBody.image = req.file.path;
     }
     const banner = await bannerService.updateBannerById(req.params.bannerId, updateBody);
     res.send({ banner });

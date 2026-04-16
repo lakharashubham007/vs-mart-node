@@ -59,15 +59,19 @@ exports.updateBrandStatus = async (id, status, userId) => {
     );
 };
 
-exports.getPublicBrandLogo = async (id) => {
+exports.getPublicBrandLogo = async (id, res) => {
     const brand = await Brand.findById(id);
     if (!brand || !brand.logo) {
         throw new Error('Logo not found');
     }
 
+    if (brand.logo.startsWith('http')) {
+        return res.redirect(brand.logo);
+    }
+
     const imagePath = path.join(__dirname, '../../../../', brand.logo);
     if (fs.existsSync(imagePath)) {
-        return imagePath;
+        return res.sendFile(imagePath);
     } else {
         throw new Error('Logo file not found');
     }

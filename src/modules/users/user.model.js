@@ -30,7 +30,7 @@ const userSchema = new mongoose.Schema({
         }
     ],
     status: { type: Boolean, default: true },
-    fcmToken: { type: String, default: null },
+    fcmTokens: [{ type: String, trim: true }],
     isDeleted: { type: Boolean, default: false }
 }, { timestamps: true });
 

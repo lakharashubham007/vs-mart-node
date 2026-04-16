@@ -20,10 +20,7 @@ const deliveryBoySchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
-    fcmToken: {
-        type: String,
-        default: null
-    }
+    fcmTokens: [{ type: String, trim: true }]
 }, { timestamps: true });
 
 // Hash password before saving

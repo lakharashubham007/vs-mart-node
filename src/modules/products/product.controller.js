@@ -1,5 +1,6 @@
 const productService = require('./product.service');
 const config = require('../../config/config');
+const { getFullImageUrl, getFullImageUrls } = require('../../utils/image.util');
 
 exports.createProduct = async (req, res) => {
     try {
@@ -21,8 +22,20 @@ exports.createProduct = async (req, res) => {
 
 exports.getProducts = async (req, res) => {
     try {
-        const { categoryId, subCategoryId, brandId, productType, status, search, page = 1, limit = 10 } = req.query;
+        const { 
+            categoryId, subCategoryId, brandId, productType, status, 
+            search, minPrice, maxPrice, onlyInStock, discountOnly, 
+            sort, page = 1, limit = 10 
+        } = req.query;
+        
         const query = { isDeleted: false };
+        const filterOptions = {
+            minPrice: parseFloat(minPrice),
+            maxPrice: parseFloat(maxPrice),
+            onlyInStock: onlyInStock === 'true',
+            discountOnly: discountOnly === 'true',
+            sort
+        };
 
         if (categoryId) query.categoryId = categoryId;
         if (subCategoryId) query.subCategoryId = subCategoryId;
@@ -33,11 +46,11 @@ exports.getProducts = async (req, res) => {
             query.$or = [
                 { name: new RegExp(search, 'i') },
                 { slug: new RegExp(search, 'i') },
-                { 'pricing.sku': new RegExp(search, 'i') }
+                { sku: new RegExp(search, 'i') }
             ];
         }
 
-        const result = await productService.getProducts(query, page, limit);
+        const result = await productService.getProducts(query, page, limit, filterOptions);
 
         console.log(`📦 [Backend Discovery] Query: ${JSON.stringify(query)}, Found: ${result.pagination.total} records`);
 
@@ -95,7 +108,6 @@ exports.updateProductStatus = async (req, res) => {
 exports.getAllProducts = async (req, res) => {
     try {
         const products = await productService.getAllProducts();
-        console.log(`📈 [Backend Discovery] Total products in DB: ${products.length}`);
         res.json({ success: true, products });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -111,59 +123,37 @@ exports.getProductDetailsForPublic = async (req, res) => {
         const { slug } = req.params;
         const { v: variantId } = req.query;
 
-        const product = await productService.getProductBySlug(slug);
-        if (!product) {
+        const productData = await productService.getProductDetailsForPublic(slug);
+        if (!productData) {
             return res.status(404).json({ success: false, message: 'Product not found' });
         }
 
-        // Base display data
-        let displayData = {
-            id: product._id,
-            name: product.name,
-            description: product.description || '',
-            slug: product.slug,
-            image: product.images?.thumbnail ? `${config.backendUrl}/${product.images.thumbnail}` : '',
-            gallery: product.images?.gallery?.map(img => `${config.backendUrl}/${img}`) || [],
-            mrp: product.pricing?.mrp || 0,
-            price: product.pricing?.finalSellingPrice || product.pricing?.sellingPrice || 0,
-            discountPercentage: 0,
-            variantText: '',
-            variants: [],
-            isSingle: product.productType === 'Single'
-        };
-
-        // Calculate discount for single
-        if (displayData.mrp > displayData.price) {
-            displayData.discountPercentage = Math.round(((displayData.mrp - displayData.price) / displayData.mrp) * 100);
-        }
-
+        // Handle specific variant display if provided
         if (variantId) {
             const variant = await productService.getVariantById(variantId);
             if (variant) {
-                displayData.variantId = variant._id;
-                displayData.mrp = variant.pricing?.mrp || displayData.mrp;
-                displayData.price = variant.pricing?.finalSellingPrice || variant.pricing?.sellingPrice || displayData.price;
-                displayData.variantText = variant.attributes?.map(a => a.valueId?.name).filter(Boolean).join(' / ') || '';
-                displayData.sku = variant.sku;
+                productData.variantId = variant._id;
+                productData.mrp = variant.pricing?.mrp || productData.mrp;
+                productData.price = variant.pricing?.finalSellingPrice || variant.pricing?.sellingPrice || productData.price;
+                productData.variantText = variant.attributes?.map(a => a.valueId?.name).filter(Boolean).join(' / ') || '';
+                productData.sku = variant.sku;
 
-                // Recalculate discount for variant
-                if (displayData.mrp > displayData.price) {
-                    displayData.discountPercentage = Math.round(((displayData.mrp - displayData.price) / displayData.mrp) * 100);
+                if (productData.mrp > productData.price) {
+                    productData.discountPercentage = Math.round(((productData.mrp - productData.price) / productData.mrp) * 100);
                 }
             }
         }
 
         res.json({
             success: true,
-            data: displayData,
+            data: productData,
             deepLink: variantId
                 ? `vsmart://product/${slug}?variantId=${variantId}`
                 : `vsmart://product/${slug}`
         });
-
     } catch (error) {
         console.error('Public product details error:', error);
-        res.status(500).json({ success: false, message: 'Internal server error' });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -194,15 +184,6 @@ exports.getProductByEan = async (req, res) => {
     }
 };
 
-exports.getProductDetailsForPublic = async (req, res) => {
-    try {
-        const product = await productService.getProductDetailsForPublic(req.params.slug);
-        res.json({ success: true, product });
-    } catch (error) {
-        const status = error.message === 'Product not found' ? 404 : 500;
-        res.status(status).json({ success: false, message: error.message });
-    }
-};
 
 exports.getSimilarHoseAssemblyItem = async (req, res) => {
     try { res.json({ success: true, items: [] }); } catch (error) { res.status(500).json({ success: false, message: error.message }); }

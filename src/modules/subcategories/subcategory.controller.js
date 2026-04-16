@@ -1,4 +1,5 @@
 const subcategoryService = require('./subcategory.service');
+const { getFullImageUrl } = require('../../utils/image.util');
 
 exports.createSubcategory = async (req, res) => {
     try {
