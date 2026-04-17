@@ -58,14 +58,25 @@ exports.sendPushNotification = async (req, res) => {
         }
 
         // ── User-specific or broadcast ─────────────────────────
-        let query = { fcmToken: { $exists: true, $ne: null }, isDeleted: false };
+        let query = { 
+            fcmTokens: { $exists: true, $not: { $size: 0 } }, 
+            isDeleted: false 
+        };
 
         if (userIds && Array.isArray(userIds) && userIds.length > 0) {
             query._id = { $in: userIds };
         }
 
-        targetUsers = await User.find(query).select('_id fcmToken').lean();
-        const allTokens = targetUsers.map(u => u.fcmToken).filter(Boolean);
+        targetUsers = await User.find(query).select('_id fcmTokens').lean();
+        
+        // Flatten all tokens from all targeted users
+        const allTokens = targetUsers.reduce((tokens, user) => {
+            if (user.fcmTokens && Array.isArray(user.fcmTokens)) {
+                return tokens.concat(user.fcmTokens);
+            }
+            return tokens;
+        }, []).filter(Boolean);
+
         const tokens = [...new Set(allTokens)];
 
         if (tokens.length < allTokens.length) {
@@ -95,8 +106,8 @@ exports.sendPushNotification = async (req, res) => {
         // Clear invalid tokens from DB to keep data clean
         if (result.invalidTokens?.length > 0) {
             await User.updateMany(
-                { fcmToken: { $in: result.invalidTokens } },
-                { $set: { fcmToken: null } }
+                { fcmTokens: { $in: result.invalidTokens } },
+                { $pull: { fcmTokens: { $in: result.invalidTokens } } }
             );
             console.log(`[PushController] Cleared ${result.invalidTokens.length} invalid FCM tokens from DB`);
         }

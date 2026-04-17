@@ -14,6 +14,7 @@ const supportController = require('../../modules/support/support.controller');
 const cmsController = require('../../modules/cms/cms.controller');
 const termsController = require('../../modules/terms/terms.controller');
 const privacyController = require('../../modules/privacy/privacy.controller');
+const shareRoutes = require('../../modules/share/share.routes');
 
 const router = express.Router();
 
@@ -49,5 +50,8 @@ router.use('/user', userRoutes);
 router.use('/orders', UserAuthentication, orderRoutes);
 router.use('/cart', UserAuthentication, cartRoutes);
 router.use('/wishlist', wishlistRoutes);
+
+const Authentication = require('../../middlewares/auth.middleware');
+router.use('/share', Authentication, shareRoutes);
 
 module.exports = router;
