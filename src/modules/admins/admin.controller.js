@@ -2,7 +2,7 @@ const adminService = require('./admin.service');
 
 exports.createAdmin = async (req, res) => {
     try {
-        const admin = await adminService.createAdmin(req.body, req.user._id);
+        const admin = await adminService.createAdmin(req.body, req.file, req.user._id);
         res.status(201).json({ message: 'Admin created successfully', admin });
     } catch (error) {
         const status = error.message === 'Email already exists' ? 400 : 500;
@@ -32,7 +32,7 @@ exports.getAdminById = async (req, res) => {
 
 exports.updateAdmin = async (req, res) => {
     try {
-        const admin = await adminService.updateAdmin(req.params.id, req.body, req.user._id);
+        const admin = await adminService.updateAdmin(req.params.id, req.body, req.file, req.user._id);
         res.json(admin);
     } catch (error) {
         const status = error.message === 'Admin not found' ? 404 : 500;

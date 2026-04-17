@@ -1,4 +1,4 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 const Product = require('./product.model');
 const ProductVariant = require('./productVariant.model');
 const Category = require('../categories/category.model');
@@ -9,7 +9,7 @@ const { generateProductQRCode } = require('../../utils/qr.util');
 const { generateRandomEan, generateEanBarcode } = require('../../utils/barcode.util');
 const stockService = require('../stock/stock.service');
 const StockIn = require('../stock/stockIn.model');
-const { getFullImageUrl, getFullImageUrls } = require('../../utils/image.util');
+const { getFullImageUrl, getFullImageUrls, deleteFromCloudinary } = require('../../utils/image.util');
 
 // Helper to generate SKU if not provided
 const generateSKU = () => {
@@ -110,6 +110,7 @@ const injectStockData = async (products) => {
 
 exports.createProduct = async (productData, files, user) => {
     const data = { ...productData };
+    const uploadedImages = [];
 
     // Map legacy frontend field names to new model names
     if (data.categoryId) data.category = data.categoryId;
@@ -121,193 +122,202 @@ exports.createProduct = async (productData, files, user) => {
     if (files) {
         if (files.image) {
             data.images.thumbnail = files.image[0].path;
+            uploadedImages.push(data.images.thumbnail);
         }
         if (files.images) {
             data.images.gallery = files.images.map(file => file.path);
+            uploadedImages.push(...data.images.gallery);
         }
     }
 
-    // Parse JSON fields
-    ['pricing', 'variants'].forEach(field => {
-        if (typeof data[field] === 'string') {
-            try {
-                data[field] = JSON.parse(data[field]);
-            } catch (e) {
-                console.error(`Error parsing ${field}:`, e);
-            }
-        }
-    });
-
-    // Ensure SKU for Single product if missing
-    if (data.productType === 'Single' && data.pricing && !data.pricing.sku) {
-        data.pricing.sku = generateSKU();
-    }
-
-    // Resolve Names from IDs
-    const categoryId = data.category || data.categoryId;
-    const subcategoryId = data.subcategory || data.subCategoryId;
-    const brandId = data.brandName || data.brandId;
-
-    let categoryName = '';
-    let subCategoryName = '';
-    let brandName = '';
-
-    if (categoryId) {
-        const cat = await Category.findById(categoryId).select('name');
-        if (cat) categoryName = cat.name;
-    }
-    if (subcategoryId) {
-        const subcat = await Subcategory.findById(subcategoryId).select('name');
-        if (subcat) subCategoryName = subcat.name;
-    }
-    if (brandId) {
-        const brand = await Brand.findById(brandId).select('name');
-        if (brand) brandName = brand.name;
-    }
-
-    const unitId = data.unitId;
-    let unitName = '';
-    if (unitId) {
-        const Unit = require('../units/unit.model');
-        const unit = await Unit.findById(unitId).select('name');
-        if (unit) unitName = unit.name;
-    }
-
-    // 1. Create Parent Product (Base Common Info)
-    const product = await Product.create({
-        ...data,
-        categoryId: categoryId,
-        categoryName: categoryName,
-        subCategoryId: subcategoryId,
-        subCategoryName: subCategoryName,
-        brandId: brandId,
-        brandName: brandName,
-        unitId: unitId,
-        unitName: unitName,
-        sku: data.productType === 'Single' ? (data.pricing?.sku || generateSKU()) : undefined,
-        minStock: data.productType === 'Single' ? (Number(data.pricing?.minStock) || 0) : 0,
-        createdBy: user?._id,
-        tenantId: user?.tenantId
-    });
-
-    // If single product and has stock, initialize Batch 1
-    if (data.productType === 'Single' && data.pricing && Number(data.pricing.quantity) > 0) {
-        await stockService.addStockIn({
-            productId: product._id,
-            quantity: Number(data.pricing.quantity),
-            pricing: {
-                mrp: Number(data.pricing.mrp) || 0,
-                sellingPrice: Number(data.pricing.sellingPrice) || 0,
-                finalSellingPrice: Number(data.pricing.finalSellingPrice) || Number(data.pricing.sellingPrice) || 0,
-                costPrice: Number(data.pricing.costPrice) || 0,
-                taxId: data.pricing.taxId || null,
-                discountType: data.pricing.discountType || 'Fixed',
-                discountValue: Number(data.pricing.discountValue) || 0
-            }
-        }, user);
-    }
-
-    // Generate QR code for the new product
     try {
-        const qrPath = await generateProductQRCode(product.slug);
-        if (qrPath) {
-            product.qrCode = qrPath;
-            await product.save();
+        // Parse JSON fields
+        ['pricing', 'variants'].forEach(field => {
+            if (typeof data[field] === 'string') {
+                try {
+                    data[field] = JSON.parse(data[field]);
+                } catch (e) {
+                    console.error(`Error parsing ${field}:`, e);
+                }
+            }
+        });
+
+        // Ensure SKU for Single product if missing
+        if (data.productType === 'Single' && data.pricing && !data.pricing.sku) {
+            data.pricing.sku = generateSKU();
         }
-    } catch (qrErr) {
-        console.error('Failed to generate QR code for product:', product._id, qrErr);
-    }
 
-    // Generate EAN and Barcode for the new product
-    try {
-        if (!product.ean) {
-            product.ean = generateRandomEan();
+        // Resolve Names from IDs
+        const categoryId = (data.category || data.categoryId) || undefined;
+        const subcategoryId = (data.subcategory || data.subCategoryId) || undefined;
+        const brandId = (data.brandName || data.brandId) || undefined;
+
+        let categoryName = '';
+        let subCategoryName = '';
+        let brandName = '';
+
+        if (categoryId) {
+            const cat = await Category.findById(categoryId).select('name');
+            if (cat) categoryName = cat.name;
         }
-        const barcodePath = await generateEanBarcode(product.ean, product.slug);
-        if (barcodePath) {
-            product.barcode = barcodePath;
-            await product.save();
+        if (subcategoryId) {
+            const subcat = await Subcategory.findById(subcategoryId).select('name');
+            if (subcat) subCategoryName = subcat.name;
         }
-    } catch (bcErr) {
-        console.error('Failed to generate barcode for product:', product._id, bcErr);
-    }
+        if (brandId) {
+            const brand = await Brand.findById(brandId).select('name');
+            if (brand) brandName = brand.name;
+        }
 
-    const createdVariants = [];
+        const unitId = data.unitId || undefined;
+        let unitName = '';
+        if (unitId) {
+            const Unit = require('../units/unit.model');
+            const unit = await Unit.findById(unitId).select('name');
+            if (unit) unitName = unit.name;
+        }
 
-    // 2. Process and Insert Decoupled Variants
-    if (data.productType === 'Variant' && Array.isArray(data.variants) && data.variants.length > 0) {
-        // Sort variants before processing
-        const sortedVariants = sortVariantsByValue(data.variants);
+        // 1. Create Parent Product (Base Common Info)
+        const product = await Product.create({
+            ...data,
+            categoryId: categoryId,
+            categoryName: categoryName,
+            subCategoryId: subcategoryId,
+            subCategoryName: subCategoryName,
+            brandId: brandId,
+            brandName: brandName,
+            unitId: unitId,
+            unitName: unitName,
+            sku: data.productType === 'Single' ? (data.pricing?.sku || generateSKU()) : undefined,
+            minStock: data.productType === 'Single' ? (Number(data.pricing?.minStock) || 0) : 0,
+            createdBy: user?._id,
+            tenantId: user?.tenantId
+        });
 
-        const variantDocs = sortedVariants.map(v => ({
-            productId: product._id,
-            sku: v.sku || generateSKU(),
-            attributes: (v.variantValues || []).map(attr => ({
-                variantTypeId: attr.variantTypeId,
-                valueId: attr.valueId
-            })),
-            qrCode: '', // Placeholder
-            minStock: Number(v.minStock) || 0,
-            createdBy: user?._id
-        }));
+        // If single product and has stock, initialize Batch 1
+        if (data.productType === 'Single' && data.pricing && Number(data.pricing.quantity) > 0) {
+            await stockService.addStockIn({
+                productId: product._id,
+                quantity: Number(data.pricing.quantity),
+                pricing: {
+                    mrp: Number(data.pricing.mrp) || 0,
+                    sellingPrice: Number(data.pricing.sellingPrice) || 0,
+                    finalSellingPrice: Number(data.pricing.finalSellingPrice) || Number(data.pricing.sellingPrice) || 0,
+                    costPrice: Number(data.pricing.costPrice) || 0,
+                    taxId: data.pricing.taxId || null,
+                    discountType: data.pricing.discountType || 'Fixed',
+                    discountValue: Number(data.pricing.discountValue) || 0
+                }
+            }, user);
+        }
 
-        // Bulk insert all child variants natively
-        const inserted = await ProductVariant.insertMany(variantDocs);
+        // Generate QR code for the new product
+        try {
+            const qrPath = await generateProductQRCode(product.slug);
+            if (qrPath) {
+                product.qrCode = qrPath;
+                await product.save();
+            }
+        } catch (qrErr) {
+            console.error('Failed to generate QR code for product:', product._id, qrErr);
+        }
 
-        // Initialize batches for variants with stock
-        for (let i = 0; i < inserted.length; i++) {
-            const vData = sortedVariants[i];
-            const vDoc = inserted[i];
+        // Generate EAN and Barcode for the new product
+        try {
+            if (!product.ean) {
+                product.ean = generateRandomEan();
+            }
+            const barcodePath = await generateEanBarcode(product.ean, product.slug);
+            if (barcodePath) {
+                product.barcode = barcodePath;
+                await product.save();
+            }
+        } catch (bcErr) {
+            console.error('Failed to generate barcode for product:', product._id, bcErr);
+        }
 
-            if (Number(vData.quantity) > 0) {
-                await stockService.addStockIn({
-                    productId: product._id,
-                    variantId: vDoc._id,
-                    quantity: Number(vData.quantity),
-                    pricing: {
-                        mrp: Number(vData.mrp) || 0,
-                        sellingPrice: Number(vData.price) || 0,
-                        finalSellingPrice: Number(vData.finalSellingPrice) || Number(vData.price) || 0,
-                        costPrice: Number(vData.costPrice) || 0,
-                        taxId: vData.taxId || null,
-                        discountType: vData.discountType || 'Fixed',
-                        discountValue: Number(vData.discountValue) || 0
+        const createdVariants = [];
+
+        // 2. Process and Insert Decoupled Variants
+        if (data.productType === 'Variant' && Array.isArray(data.variants) && data.variants.length > 0) {
+            // Sort variants before processing
+            const sortedVariants = sortVariantsByValue(data.variants);
+
+            const variantDocs = sortedVariants.map(v => ({
+                productId: product._id,
+                sku: v.sku || generateSKU(),
+                attributes: (v.variantValues || []).map(attr => ({
+                    variantTypeId: attr.variantTypeId,
+                    valueId: attr.valueId
+                })),
+                qrCode: '', // Placeholder
+                minStock: Number(v.minStock) || 0,
+                createdBy: user?._id
+            }));
+
+            // Bulk insert all child variants natively
+            const inserted = await ProductVariant.insertMany(variantDocs);
+
+            // Initialize batches for variants with stock
+            for (let i = 0; i < inserted.length; i++) {
+                const vData = sortedVariants[i];
+                const vDoc = inserted[i];
+
+                if (Number(vData.quantity) > 0) {
+                    await stockService.addStockIn({
+                        productId: product._id,
+                        variantId: vDoc._id,
+                        quantity: Number(vData.quantity),
+                        pricing: {
+                            mrp: Number(vData.mrp) || 0,
+                            sellingPrice: Number(vData.price) || 0,
+                            finalSellingPrice: Number(vData.finalSellingPrice) || Number(vData.price) || 0,
+                            costPrice: Number(vData.costPrice) || 0,
+                            taxId: vData.taxId || null,
+                            discountType: vData.discountType || 'Fixed',
+                            discountValue: Number(vData.discountValue) || 0
+                        }
+                    }, user);
+                }
+            }
+
+            // Generate QR codes for each variant
+            for (const variant of inserted) {
+                try {
+                    const qrPath = await generateProductQRCode(product.slug, variant._id);
+                    if (qrPath) {
+                        variant.qrCode = qrPath;
+                        await variant.save();
                     }
-                }, user);
+                } catch (qrErr) {
+                    console.error('Failed to generate QR code for variant:', variant._id, qrErr);
+                }
+
+                // Generate EAN and Barcode for the variant
+                try {
+                    if (!variant.ean) {
+                        variant.ean = generateRandomEan();
+                    }
+                    const barcodePath = await generateEanBarcode(variant.ean, `${product.slug}-${variant._id}`);
+                    if (barcodePath) {
+                        variant.barcode = barcodePath;
+                        await variant.save();
+                    }
+                } catch (bcErr) {
+                    console.error('Failed to generate barcode for variant:', variant._id, bcErr);
+                }
             }
+
+            createdVariants.push(...inserted);
         }
 
-        // Generate QR codes for each variant
-        for (const variant of inserted) {
-            try {
-                const qrPath = await generateProductQRCode(product.slug, variant._id);
-                if (qrPath) {
-                    variant.qrCode = qrPath;
-                    await variant.save();
-                }
-            } catch (qrErr) {
-                console.error('Failed to generate QR code for variant:', variant._id, qrErr);
-            }
-
-            // Generate EAN and Barcode for the variant
-            try {
-                if (!variant.ean) {
-                    variant.ean = generateRandomEan();
-                }
-                const barcodePath = await generateEanBarcode(variant.ean, `${product.slug}-${variant._id}`);
-                if (barcodePath) {
-                    variant.barcode = barcodePath;
-                    await variant.save();
-                }
-            } catch (bcErr) {
-                console.error('Failed to generate barcode for variant:', variant._id, bcErr);
-            }
+        return { product, variantsCreated: createdVariants.length };
+    } catch (error) {
+        if (uploadedImages.length > 0) {
+            await deleteFromCloudinary(uploadedImages);
         }
-
-        createdVariants.push(...inserted);
+        throw error;
     }
-
-    return { product, variantsCreated: createdVariants.length };
 };
 
 exports.getProducts = async (query, page = 1, limit = 10, filterOptions = {}) => {
@@ -560,21 +570,29 @@ exports.updateProduct = async (id, productData, files, user) => {
         // Handle images
         if (files) {
             const newImages = { ...existingProduct.images };
+            const oldImagesToDelete = [];
             if (files.image) {
+                if (newImages.thumbnail) oldImagesToDelete.push(newImages.thumbnail);
                 newImages.thumbnail = files.image[0].path;
             }
             if (files.images) {
+                // If appending to gallery, we don't necessarily delete
                 const gallery = files.images.map(file => file.path);
                 newImages.gallery = [...(newImages.gallery || []), ...gallery];
             }
             data.images = newImages;
+            if (oldImagesToDelete.length > 0) {
+                await deleteFromCloudinary(oldImagesToDelete);
+            }
         }
 
         // Handle image removal if requested
         if (productData.removeGalleryImage) {
             const currentImages = data.images || existingProduct.images;
-            currentImages.gallery = currentImages.gallery.filter(img => img !== productData.removeGalleryImage);
+            const imageToDelete = productData.removeGalleryImage;
+            currentImages.gallery = currentImages.gallery.filter(img => img !== imageToDelete);
             data.images = currentImages;
+            await deleteFromCloudinary(imageToDelete);
         }
 
         // Parse JSON fields
@@ -589,9 +607,9 @@ exports.updateProduct = async (id, productData, files, user) => {
         });
 
         // Resolve Names from IDs...
-        const categoryId = data.category || data.categoryId || existingProduct.categoryId;
-        const subcategoryId = data.subcategory || data.subCategoryId || existingProduct.subCategoryId;
-        const brandId = data.brandName || data.brandId || existingProduct.brandId;
+        const categoryId = (data.category || data.categoryId || existingProduct.categoryId) || undefined;
+        const subcategoryId = (data.subcategory || data.subCategoryId || existingProduct.subCategoryId) || undefined;
+        const brandId = (data.brandName || data.brandId || existingProduct.brandId) || undefined;
 
         let categoryName = existingProduct.categoryName || '';
         let subCategoryName = existingProduct.subCategoryName || '';
@@ -610,7 +628,7 @@ exports.updateProduct = async (id, productData, files, user) => {
             if (brand) brandName = brand.name;
         }
 
-        const unitId = data.unitId || existingProduct.unitId;
+        const unitId = (data.unitId || existingProduct.unitId) || undefined;
         let unitName = existingProduct.unitName || '';
         if (unitId && (!unitName || unitId.toString() !== existingProduct.unitId?.toString())) {
             const Unit = require('../units/unit.model');
@@ -632,7 +650,7 @@ exports.updateProduct = async (id, productData, files, user) => {
                 sku: data.productType === 'Single' ? (data.pricing?.sku || existingProduct.sku || generateSKU()) : undefined,
                 updatedBy: user?._id
             },
-            { new: true, session }
+            { returnDocument: 'after', session }
         );
 
         // QR/Barcode updates...
@@ -699,7 +717,7 @@ exports.updateProduct = async (id, productData, files, user) => {
 
                 let updatedVariant;
                 if (v._id) {
-                    updatedVariant = await ProductVariant.findByIdAndUpdate(v._id, variantData, { new: true, session });
+                    updatedVariant = await ProductVariant.findByIdAndUpdate(v._id, variantData, { returnDocument: 'after', session });
                     
                     // Update existing variant pricing in its first batch
                     const firstBatch = await StockIn.findOne({ productId: product._id, variantId: v._id, isDeleted: false }).sort({ createdAt: 1 }).session(session);
@@ -719,7 +737,7 @@ exports.updateProduct = async (id, productData, files, user) => {
                 } else {
                     const existingBySku = await ProductVariant.findOne({ sku: variantData.sku }).session(session);
                     if (existingBySku) {
-                        updatedVariant = await ProductVariant.findByIdAndUpdate(existingBySku._id, variantData, { new: true, session });
+                        updatedVariant = await ProductVariant.findByIdAndUpdate(existingBySku._id, variantData, { returnDocument: 'after', session });
                     } else {
                         variantData.createdBy = existingProduct.createdBy || user?._id;
                         updatedVariant = await ProductVariant.create([variantData], { session });
@@ -861,6 +879,15 @@ exports.deleteProduct = async (id) => {
             { productId: product._id },
             { session }
         );
+
+        // Delete all images from Cloudinary upon deletion
+        const imagesToDelete = [];
+        if (product.images?.thumbnail) imagesToDelete.push(product.images.thumbnail);
+        if (product.images?.gallery?.length > 0) imagesToDelete.push(...product.images.gallery);
+        
+        if (imagesToDelete.length > 0) {
+            await deleteFromCloudinary(imagesToDelete);
+        }
 
         await session.commitTransaction();
     } catch (error) {

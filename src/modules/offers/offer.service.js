@@ -1,5 +1,6 @@
 const Offer = require('./offer.model');
 const ApiError = require('../../utils/ApiError');
+const { deleteFromCloudinary } = require('../../utils/image.util');
 
 /**
  * Create an offer
@@ -7,7 +8,14 @@ const ApiError = require('../../utils/ApiError');
  * @returns {Promise<Offer>}
  */
 const createOffer = async (offerBody) => {
-    return Offer.create(offerBody);
+    try {
+        return await Offer.create(offerBody);
+    } catch (error) {
+        if (offerBody.image) {
+            await deleteFromCloudinary(offerBody.image);
+        }
+        throw error;
+    }
 };
 
 /**
@@ -80,6 +88,11 @@ const updateOfferById = async (offerId, updateBody) => {
     if (!offer) {
         throw new ApiError(404, 'Offer not found');
     }
+    
+    if (updateBody.image && offer.image && updateBody.image !== offer.image) {
+        await deleteFromCloudinary(offer.image);
+    }
+
     Object.assign(offer, updateBody);
     await offer.save();
     return offer;
@@ -95,6 +108,11 @@ const deleteOfferById = async (offerId) => {
     if (!offer) {
         throw new ApiError(404, 'Offer not found');
     }
+
+    if (offer.image) {
+        await deleteFromCloudinary(offer.image);
+    }
+
     offer.isDeleted = true;
     await offer.save();
     return offer;

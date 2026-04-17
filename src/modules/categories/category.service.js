@@ -1,4 +1,5 @@
 const Category = require('./category.model');
+const { deleteFromCloudinary } = require('../../utils/image.util');
 const fs = require('fs');
 const path = require('path');
 
@@ -18,10 +19,17 @@ exports.createCategory = async (categoryData, file, userId) => {
         data.addonIds = Array.isArray(categoryData['addonIds[]']) ? categoryData['addonIds[]'] : [categoryData['addonIds[]']];
     }
 
-    return await Category.create({
-        ...data,
-        createdBy: userId
-    });
+    try {
+        return await Category.create({
+            ...data,
+            createdBy: userId
+        });
+    } catch (error) {
+        if (data.image) {
+            await deleteFromCloudinary(data.image);
+        }
+        throw error;
+    }
 };
 
 exports.getCategories = async () => {
@@ -45,10 +53,15 @@ exports.getCategoryById = async (id) => {
 
 exports.updateCategory = async (id, categoryData, file, userId) => {
     const data = { ...categoryData };
+    const existingCategory = await Category.findById(id);
+    if (!existingCategory) throw new Error('Category not found');
+
     if (file) {
         data.image = file.path;
+        if (existingCategory.image) await deleteFromCloudinary(existingCategory.image);
     } else if (categoryData.removeImage === 'true') {
         data.image = null;
+        if (existingCategory.image) await deleteFromCloudinary(existingCategory.image);
     }
     delete data.removeImage;
 
@@ -74,6 +87,10 @@ exports.updateCategory = async (id, categoryData, file, userId) => {
 exports.deleteCategory = async (id) => {
     const category = await Category.findById(id);
     if (!category) throw new Error('Category not found');
+
+    if (category.image) {
+        await deleteFromCloudinary(category.image);
+    }
 
     category.isDeleted = true;
     await category.save();

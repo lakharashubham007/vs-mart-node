@@ -1,4 +1,5 @@
 const Subcategory = require('./subcategory.model');
+const { deleteFromCloudinary } = require('../../utils/image.util');
 const fs = require('fs');
 
 exports.createSubcategory = async (subcategoryData, file, userId) => {
@@ -16,7 +17,9 @@ exports.createSubcategory = async (subcategoryData, file, userId) => {
         await subcategory.save();
         return subcategory;
     } catch (error) {
-        if (file) fs.unlink(file.path, () => { });
+        if (data.image) {
+            await deleteFromCloudinary(data.image);
+        }
         throw error;
     }
 };
@@ -45,14 +48,19 @@ exports.getSubcategoryById = async (id) => {
 exports.updateSubcategory = async (id, subcategoryData, file, userId) => {
     const data = { ...subcategoryData };
 
-    if (file) {
-        data.image = file.path;
-    } else if (subcategoryData.removeImage === 'true') {
-        data.image = null;
-    }
-    delete data.removeImage;
-
     try {
+        const existingSubcategory = await Subcategory.findById(id);
+        if (!existingSubcategory) throw new Error('Subcategory not found');
+
+        if (file) {
+            data.image = file.path;
+            if (existingSubcategory.image) await deleteFromCloudinary(existingSubcategory.image);
+        } else if (subcategoryData.removeImage === 'true') {
+            data.image = null;
+            if (existingSubcategory.image) await deleteFromCloudinary(existingSubcategory.image);
+        }
+        delete data.removeImage;
+
         const subcategory = await Subcategory.findByIdAndUpdate(
             id,
             { ...data, updatedBy: userId },
@@ -62,7 +70,9 @@ exports.updateSubcategory = async (id, subcategoryData, file, userId) => {
         if (!subcategory) throw new Error('Subcategory not found');
         return subcategory;
     } catch (error) {
-        if (file) fs.unlink(file.path, () => { });
+        if (data.image && file) {
+            await deleteFromCloudinary(data.image);
+        }
         throw error;
     }
 };
@@ -78,11 +88,17 @@ exports.updateSubcategoryStatus = async (id, status, userId) => {
 };
 
 exports.deleteSubcategory = async (id, userId) => {
-    const subcategory = await Subcategory.findByIdAndUpdate(
+    const subcategory = await Subcategory.findById(id);
+    if (!subcategory) throw new Error('Subcategory not found');
+
+    if (subcategory.image) {
+        await deleteFromCloudinary(subcategory.image);
+    }
+
+    const deletedSubcategory = await Subcategory.findByIdAndUpdate(
         id,
         { isDeleted: true, updatedBy: userId },
         { new: true }
     );
-    if (!subcategory) throw new Error('Subcategory not found');
-    return subcategory;
+    return deletedSubcategory;
 };

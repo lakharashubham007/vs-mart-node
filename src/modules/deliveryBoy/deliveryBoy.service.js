@@ -1,4 +1,5 @@
 const DeliveryBoy = require('./deliveryBoy.model');
+const { deleteFromCloudinary } = require('../../utils/image.util');
 const fs = require('fs');
 const path = require('path');
 
@@ -9,8 +10,15 @@ exports.createDeliveryBoy = async (data, file) => {
     if (file) {
         data.profileImage = file.path;
     }
-    const deliveryBoy = await DeliveryBoy.create(data);
-    return deliveryBoy;
+    try {
+        const deliveryBoy = await DeliveryBoy.create(data);
+        return deliveryBoy;
+    } catch (error) {
+        if (data.profileImage) {
+            await deleteFromCloudinary(data.profileImage);
+        }
+        throw error;
+    }
 };
 
 /**
@@ -63,9 +71,13 @@ exports.updateDeliveryBoy = async (id, data, file) => {
     if (!deliveryBoy) throw new Error('Delivery Boy not found');
 
     if (file) {
-        // Delete old image if exists locally (only if not a URL)
-        if (deliveryBoy.profileImage && !deliveryBoy.profileImage.startsWith('http') && fs.existsSync(deliveryBoy.profileImage)) {
-            try { fs.unlinkSync(deliveryBoy.profileImage); } catch (e) { console.error('Image delete error:', e); }
+        // Unified Cloudinary/Local cleanup
+        if (deliveryBoy.profileImage) {
+            if (deliveryBoy.profileImage.startsWith('http')) {
+                await deleteFromCloudinary(deliveryBoy.profileImage);
+            } else if (fs.existsSync(deliveryBoy.profileImage)) {
+                try { fs.unlinkSync(deliveryBoy.profileImage); } catch (e) { console.error('Image delete error:', e); }
+            }
         }
         data.profileImage = file.path;
     }
@@ -83,8 +95,12 @@ exports.deleteDeliveryBoy = async (id) => {
     if (!deliveryBoy) throw new Error('Delivery Boy not found');
 
     // Delete image if exists
-    if (deliveryBoy.profileImage && fs.existsSync(deliveryBoy.profileImage)) {
-        try { fs.unlinkSync(deliveryBoy.profileImage); } catch (e) { console.error('Image delete error:', e); }
+    if (deliveryBoy.profileImage) {
+        if (deliveryBoy.profileImage.startsWith('http')) {
+            await deleteFromCloudinary(deliveryBoy.profileImage);
+        } else if (fs.existsSync(deliveryBoy.profileImage)) {
+            try { fs.unlinkSync(deliveryBoy.profileImage); } catch (e) { console.error('Image delete error:', e); }
+        }
     }
 
     return await DeliveryBoy.findByIdAndDelete(id);

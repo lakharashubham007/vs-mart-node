@@ -1,4 +1,5 @@
 const userService = require('./user.service');
+const { deleteFromCloudinary } = require('../../utils/image.util');
 
 exports.login = async (req, res) => {
     try {
@@ -118,15 +119,23 @@ exports.updateProfile = async (req, res) => {
 
         if (name !== undefined) updateData.name = name.trim();
         if (email !== undefined) updateData.email = email.trim();
+        const User = require('./user.model');
+        const existingUser = await User.findById(userId);
+        if (!existingUser) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
         if (req.file) {
             updateData.profileImage = req.file.path;
+            if (existingUser.profileImage) {
+                await deleteFromCloudinary(existingUser.profileImage);
+            }
         }
 
         if (Object.keys(updateData).length === 0) {
             return res.status(400).json({ success: false, message: 'No fields to update' });
         }
 
-        const User = require('./user.model');
         const updatedUser = await User.findByIdAndUpdate(
             userId,
             { $set: updateData },

@@ -1,5 +1,6 @@
 const Banner = require('./banner.model');
 const ApiError = require('../../utils/ApiError');
+const { deleteFromCloudinary } = require('../../utils/image.util');
 
 /**
  * Create a banner
@@ -7,17 +8,18 @@ const ApiError = require('../../utils/ApiError');
  * @returns {Promise<Banner>}
  */
 const createBanner = async (bannerBody) => {
-    return Banner.create(bannerBody);
+    try {
+        return await Banner.create(bannerBody);
+    } catch (error) {
+        if (bannerBody.image) {
+            await deleteFromCloudinary(bannerBody.image);
+        }
+        throw error;
+    }
 };
 
 /**
  * Query for banners
- * @param {Object} filter - Mongo filter
- * @param {Object} options - Query options
- * @param {string} [options.search] - Search term
- * @param {number} [options.limit] - Maximum number of results per page (default = 10)
- * @param {number} [options.page] - Current page (default = 1)
- * @returns {Promise<Object>}
  */
 const queryBanners = async (filter = {}, options = {}) => {
     const { search, limit = 10, page = 1 } = options;
@@ -88,6 +90,11 @@ const updateBannerById = async (bannerId, updateBody) => {
     if (!banner) {
         throw new ApiError(404, 'Banner not found');
     }
+    
+    if (updateBody.image && banner.image && updateBody.image !== banner.image) {
+        await deleteFromCloudinary(banner.image);
+    }
+
     Object.assign(banner, updateBody);
     await banner.save();
     return banner;
@@ -103,6 +110,11 @@ const deleteBannerById = async (bannerId) => {
     if (!banner) {
         throw new ApiError(404, 'Banner not found');
     }
+
+    if (banner.image) {
+        await deleteFromCloudinary(banner.image);
+    }
+
     banner.isDeleted = true;
     await banner.save();
     return banner;

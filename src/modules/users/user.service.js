@@ -1,6 +1,7 @@
 const User = require('./user.model');
 const jwt = require('jsonwebtoken');
 const authService = require('../auth/auth.service');
+const { deleteFromCloudinary } = require('../../utils/image.util');
 
 exports.loginUser = async (phone) => {
     // Check if user exists

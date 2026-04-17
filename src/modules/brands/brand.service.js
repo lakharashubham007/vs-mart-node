@@ -1,4 +1,5 @@
 const Brand = require('./brand.model');
+const { deleteFromCloudinary } = require('../../utils/image.util');
 const fs = require('fs');
 const path = require('path');
 
@@ -8,10 +9,17 @@ exports.createBrand = async (brandData, file, userId) => {
         data.logo = file.path;
     }
 
-    return await Brand.create({
-        ...data,
-        createdBy: userId
-    });
+    try {
+        return await Brand.create({
+            ...data,
+            createdBy: userId
+        });
+    } catch (error) {
+        if (data.logo) {
+            await deleteFromCloudinary(data.logo);
+        }
+        throw error;
+    }
 };
 
 exports.getBrands = async () => {
@@ -26,10 +34,15 @@ exports.getBrandById = async (id) => {
 
 exports.updateBrand = async (id, brandData, file, userId) => {
     const data = { ...brandData };
+    const existingBrand = await Brand.findById(id);
+    if (!existingBrand) throw new Error('Brand not found');
+
     if (file) {
         data.logo = file.path;
+        if (existingBrand.logo) await deleteFromCloudinary(existingBrand.logo);
     } else if (brandData.removeImage === 'true') {
         data.logo = null;
+        if (existingBrand.logo) await deleteFromCloudinary(existingBrand.logo);
     }
     delete data.removeImage;
 
@@ -45,6 +58,10 @@ exports.updateBrand = async (id, brandData, file, userId) => {
 exports.deleteBrand = async (id) => {
     const brand = await Brand.findById(id);
     if (!brand) throw new Error('Brand not found');
+
+    if (brand.logo) {
+        await deleteFromCloudinary(brand.logo);
+    }
 
     brand.isDeleted = true;
     await brand.save();
