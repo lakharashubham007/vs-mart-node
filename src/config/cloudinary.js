@@ -20,12 +20,17 @@ const storage = new CloudinaryStorage({
       folder = 'vsmart/offers';
     } else if (req.originalUrl.includes('delivery-boy')) {
       folder = 'vsmart/delivery-boys';
+    } else if (req.originalUrl.includes('stories')) {
+      folder = 'vsmart/stories';
     }
+
+    const isVideo = file.mimetype.startsWith('video/');
 
     return {
       folder: folder,
       public_id: file.fieldname + '-' + Date.now(),
-      allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
+      allowed_formats: ['jpg', 'png', 'jpeg', 'webp', 'mp4'],
+      resource_type: isVideo ? 'video' : 'image',
     };
   },
 });

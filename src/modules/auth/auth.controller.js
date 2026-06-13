@@ -1,4 +1,19 @@
 const authService = require('./auth.service');
+const userService = require('../users/user.service');
+
+exports.googleLogin = async (req, res) => {
+    try {
+        const { idToken, fcmToken } = req.body;
+        const result = await userService.googleLogin(idToken, fcmToken);
+        res.status(200).json({ 
+            success: true, 
+            message: 'Google login successful', 
+            data: result 
+        });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
 
 exports.login = async (req, res) => {
     try {

@@ -22,6 +22,14 @@ const productVariantSchema = new mongoose.Schema({
         valueId: { type: mongoose.Schema.Types.ObjectId, ref: 'VariantValue', required: true }
     }],
 
+    thumbnail: {
+        type: String
+    },
+
+    images: [{
+        type: String
+    }],
+
     // Core Inventory Metadata
     minStock: { type: Number, default: 0 },
     qrCode: { type: String },

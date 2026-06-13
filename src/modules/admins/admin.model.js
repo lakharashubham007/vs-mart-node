@@ -14,6 +14,7 @@ const adminSchema = new mongoose.Schema({
     profileImage: String,
 
     tenantId: { type: mongoose.Schema.Types.ObjectId }, // For future SaaS scalability
+    fcmToken: { type: String, trim: true },
     fcmTokens: [{ type: String, trim: true }],
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },

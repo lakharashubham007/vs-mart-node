@@ -2,8 +2,10 @@ const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
     name: { type: String, trim: true },
-    phone: { type: String, required: true, unique: true, index: true },
+    phone: { type: String, unique: true, index: true, sparse: true },
     email: { type: String, sparse: true, trim: true },
+    googleId: { type: String, sparse: true, unique: true },
+    loginType: { type: String, enum: ['otp', 'google'], default: 'otp' },
     profileImage: { type: String },
     otp: { type: String },
     otpExpiry: { type: Date },
@@ -30,6 +32,7 @@ const userSchema = new mongoose.Schema({
         }
     ],
     status: { type: Boolean, default: true },
+    fcmToken: { type: String, trim: true },
     fcmTokens: [{ type: String, trim: true }],
     isDeleted: { type: Boolean, default: false }
 }, { timestamps: true });

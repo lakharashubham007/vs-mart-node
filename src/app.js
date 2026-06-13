@@ -14,6 +14,12 @@ const app = express();
 app.use(cors());
 app.options(/.*/, cors());
 
+// Request logger for debugging 404s
+app.use((req, res, next) => {
+    console.log(`📡 [Backend] ${req.method} ${req.originalUrl || req.url}`);
+    next();
+});
+
 // Health check route for network discovery
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
@@ -41,11 +47,17 @@ app.use(express.urlencoded({ extended: true }));
 
 // Use public routes for /v1
 app.use('/v1/public', publicRoutes); // Public routes
+app.use('/public', publicRoutes);     // Fallback for missing /v1
 
 // Auth and Private routes for /v1
-app.use('/v1/auth', authRoutes); // Auth routes (login, etc)
+app.use('/v1/auth', authRoutes);      // Auth routes (login, etc)
+app.use('/auth', authRoutes);         // Fallback for missing /v1
+
 app.use('/v1/private', privateRoutes); // Private routes
-app.use('/v1/admin', adminRoutes); // Admin Analytics routes
+app.use('/private', privateRoutes);    // Fallback for missing /v1
+
+app.use('/v1/admin', adminRoutes);    // Admin Analytics routes
+app.use('/admin', adminRoutes);       // Fallback for missing /v1
 
 //Api routes
 app.use((req, res, next) => {

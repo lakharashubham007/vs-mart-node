@@ -5,6 +5,7 @@ const UserAuthentication = require('../../middlewares/userAuth.middleware');
 const upload = require('../../middlewares/upload.middleware');
 
 // Public routes for mobile/web app users
+router.post('/google-login', userController.googleLogin);
 router.post('/login', userController.login);
 router.post('/register', userController.register);
 router.post('/verify-otp', userController.verifyOTP);

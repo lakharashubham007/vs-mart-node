@@ -1,6 +1,8 @@
+const mongoose = require('mongoose');
 const Offer = require('./offer.model');
+const OfferUsage = require('./offerUsage.model');
 const ApiError = require('../../utils/ApiError');
-const { deleteFromCloudinary } = require('../../utils/image.util');
+const httpStatus = require('http-status').status;
 
 /**
  * Create an offer
@@ -8,64 +10,59 @@ const { deleteFromCloudinary } = require('../../utils/image.util');
  * @returns {Promise<Offer>}
  */
 const createOffer = async (offerBody) => {
-    try {
-        return await Offer.create(offerBody);
-    } catch (error) {
-        if (offerBody.image) {
-            await deleteFromCloudinary(offerBody.image);
-        }
-        throw error;
+    if (offerBody.type === 'OFFER' && !offerBody.code) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'Offer code is required for OFFER type');
     }
+    if (offerBody.code) {
+        const existingOffer = await Offer.findOne({ code: offerBody.code });
+        if (existingOffer) {
+            throw new ApiError(httpStatus.BAD_REQUEST, 'Offer code already exists');
+        }
+    }
+    return Offer.create(offerBody);
 };
 
 /**
- * Query for offers with pagination and search
- * @param {Object} query - Query parameters (page, limit, search)
- * @returns {Promise<Object>} - Object with offers and pagination info
+ * Query for offers
+ * @param {Object} filter - Mongo filter
+ * @param {Object} options - Query options
+ * @param {string} [options.sortBy] - Sort option in the format: sortField:(desc|asc)
+ * @param {number} [options.limit] - Maximum number of results per page (default = 10)
+ * @param {number} [options.page] - Current page (default = 1)
+ * @returns {Promise<QueryResult>}
  */
-const queryOffers = async (query = {}) => {
-    const { page = 1, limit = 10, search = '' } = query;
-    const filter = { isDeleted: false };
-    
-    if (search) {
-        filter.title = { $regex: search, $options: 'i' };
+const queryOffers = async (filter, options) => {
+    const { sortBy, limit = 10, page = 1 } = options;
+    const skip = (page - 1) * limit;
+
+    let sort = '';
+    if (sortBy) {
+        const parts = sortBy.split(':');
+        sort = (parts[1] === 'desc' ? '-' : '') + parts[0];
+    } else {
+        sort = '-createdAt';
     }
 
-    const options = {
-        limit: parseInt(limit, 10),
-        skip: (parseInt(page, 10) - 1) * parseInt(limit, 10),
-        sort: { order: 1, createdAt: -1 }
-    };
+    const offers = await Offer.find(filter)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .populate('productIds', 'name')
+        .populate('categoryIds', 'name')
+        .populate('variantIds', 'sku')
+        .populate('freeProductId', 'name')
+        .populate('freeProductVariantId', 'sku');
 
-    const offers = await Offer.find(filter, null, options);
-    const total = await Offer.countDocuments(filter);
+    const totalResults = await Offer.countDocuments(filter);
+    const totalPages = Math.ceil(totalResults / limit);
 
     return {
-        offers,
-        pagination: {
-            total,
-            page: parseInt(page, 10),
-            limit: parseInt(limit, 10),
-            pages: Math.ceil(total / limit)
-        }
+        results: offers,
+        page,
+        limit,
+        totalPages,
+        totalResults,
     };
-};
-
-/**
- * Get active offers for mobile app
- * @returns {Promise<Array<Offer>>}
- */
-const getActiveOffers = async () => {
-    const now = new Date();
-    return Offer.find({
-        isActive: true,
-        $or: [
-            { expiryDate: { $exists: false } },
-            { expiryDate: null },
-            { expiryDate: { $gt: now } }
-        ],
-        startDate: { $lte: now }
-    }).sort({ order: 1 });
 };
 
 /**
@@ -74,7 +71,12 @@ const getActiveOffers = async () => {
  * @returns {Promise<Offer>}
  */
 const getOfferById = async (id) => {
-    return Offer.findById(id);
+    return Offer.findById(id)
+        .populate('productIds', 'name')
+        .populate('categoryIds', 'name')
+        .populate('variantIds', 'sku')
+        .populate('freeProductId', 'name')
+        .populate('freeProductVariantId', 'sku');
 };
 
 /**
@@ -86,13 +88,14 @@ const getOfferById = async (id) => {
 const updateOfferById = async (offerId, updateBody) => {
     const offer = await getOfferById(offerId);
     if (!offer) {
-        throw new ApiError(404, 'Offer not found');
+        throw new ApiError(httpStatus.NOT_FOUND, 'Offer not found');
     }
-    
-    if (updateBody.image && offer.image && updateBody.image !== offer.image) {
-        await deleteFromCloudinary(offer.image);
+    if (updateBody.code && updateBody.code !== offer.code) {
+        const existingOffer = await Offer.findOne({ code: updateBody.code });
+        if (existingOffer) {
+            throw new ApiError(httpStatus.BAD_REQUEST, 'Offer code already exists');
+        }
     }
-
     Object.assign(offer, updateBody);
     await offer.save();
     return offer;
@@ -104,25 +107,204 @@ const updateOfferById = async (offerId, updateBody) => {
  * @returns {Promise<Offer>}
  */
 const deleteOfferById = async (offerId) => {
+    const offer = await Offer.findByIdAndUpdate(
+        offerId,
+        { isDeleted: true },
+        { new: true, runValidators: false }
+    );
+    if (!offer) {
+        throw new ApiError(httpStatus.NOT_FOUND, 'Offer not found');
+    }
+    return offer;
+};
+
+/**
+ * Toggle offer status
+ * @param {ObjectId} offerId
+ * @returns {Promise<Offer>}
+ */
+const toggleOfferStatus = async (offerId) => {
     const offer = await getOfferById(offerId);
     if (!offer) {
-        throw new ApiError(404, 'Offer not found');
+        throw new ApiError(httpStatus.NOT_FOUND, 'Offer not found');
+    }
+    
+    const updatedOffer = await Offer.findByIdAndUpdate(
+        offerId,
+        { isActive: !offer.isActive },
+        { new: true, runValidators: false }
+    );
+    return updatedOffer;
+};
+
+/**
+ * Get available offers for a user
+ * @param {ObjectId} userId
+ * @param {number} orderAmount
+ * @returns {Promise<Array>}
+ */
+const getAvailableOffers = async (userId, orderAmount) => {
+    const OfferUsage = require('./offerUsage.model');
+    const now = new Date();
+
+    // 1. Fetch all active and non-expired offers
+    const offers = await Offer.find({
+        isActive: true,
+        isDeleted: false,
+        validFrom: { $lte: now },
+        validTo: { $gte: now }
+    });
+
+    // 2. Fetch user usage in one aggregate query (Optimization ✅)
+    const usageData = await OfferUsage.aggregate([
+        { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+        {
+            $group: {
+                _id: "$offerId",
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+
+    // Convert to Map for O(1) lookup
+    const usageMap = {};
+    usageData.forEach(item => {
+        usageMap[item._id.toString()] = item.count;
+    });
+
+    // 3. Process offers in memory (FAST ⚡)
+    const availableOffers = offers.map(offer => {
+        const userUsageCount = usageMap[offer._id.toString()] || 0;
+        let isUsable = true;
+        let message = '';
+
+        // Check overall usage limit
+        if (offer.usageLimit > 0 && offer.usedCount >= offer.usageLimit) {
+            isUsable = false;
+            message = 'Offer fully redeemed';
+        }
+        // Check per-user limit
+        else if (userUsageCount >= offer.perUserLimit) {
+            isUsable = false;
+            message = 'You already used this offer';
+        }
+        // Check min order amount
+        else if (orderAmount < offer.minOrderAmount) {
+            isUsable = false;
+            message = `Add ₹${(offer.minOrderAmount - orderAmount).toFixed(0)} more to unlock`;
+        }
+
+        return {
+            id: offer._id,
+            title: offer.title,
+            code: offer.code,
+            discountType: offer.discountType,
+            discountValue: offer.discountValue,
+            minOrderAmount: offer.minOrderAmount,
+            maxDiscount: offer.maxDiscount,
+            isUsable,
+            message
+        };
+    });
+
+    // Sort by usable first, then by discount value
+    return availableOffers.sort((a, b) => {
+        if (a.isUsable === b.isUsable) {
+            return b.discountValue - a.discountValue;
+        }
+        return a.isUsable ? -1 : 1;
+    });
+};
+
+/**
+ * Apply an offer code
+ * @param {string} code
+ * @param {ObjectId} userId
+ * @param {number} orderAmount
+ * @returns {Promise<Object>}
+ */
+const applyOffer = async (code, userId, orderAmount) => {
+    const offer = await Offer.findOne({ code: code.toUpperCase(), isActive: true, isDeleted: false });
+    if (!offer) {
+        throw new ApiError(httpStatus.NOT_FOUND, 'Invalid offer code');
     }
 
-    if (offer.image) {
-        await deleteFromCloudinary(offer.image);
+    const now = new Date();
+    if (now < offer.validFrom || now > offer.validTo) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'Offer has expired');
     }
 
-    offer.isDeleted = true;
-    await offer.save();
-    return offer;
+    if (offer.usageLimit > 0 && offer.usedCount >= offer.usageLimit) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'Offer limit reached');
+    }
+
+    if (orderAmount < offer.minOrderAmount) {
+        throw new ApiError(httpStatus.BAD_REQUEST, `Minimum order amount of ₹${offer.minOrderAmount} required`);
+    }
+
+    const userUsageCount = await OfferUsage.countDocuments({ userId, offerId: offer._id });
+    if (userUsageCount >= offer.perUserLimit) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'You have already used this offer');
+    }
+
+    let discountAmount = 0;
+    if (offer.discountType === 'PERCENTAGE') {
+        discountAmount = (orderAmount * offer.discountValue) / 100;
+        if (offer.maxDiscount && discountAmount > offer.maxDiscount) {
+            discountAmount = offer.maxDiscount;
+        }
+    } else if (offer.discountType === 'FLAT') {
+        discountAmount = offer.discountValue;
+    }
+
+    return {
+        offerId: offer._id,
+        code: offer.code,
+        discountAmount: Math.round(discountAmount),
+        discountType: offer.discountType,
+        discountValue: offer.discountValue
+    };
+};
+
+/**
+ * Get detailed usage analytics for an offer
+ * @param {ObjectId} offerId
+ * @param {Object} options
+ * @returns {Promise<QueryResult>}
+ */
+const getOfferUsageAnalytics = async (offerId, options) => {
+    const { limit = 10, page = 1 } = options;
+    const skip = (page - 1) * limit;
+
+    const filter = { offerId: new mongoose.Types.ObjectId(offerId) };
+
+    const usage = await OfferUsage.find(filter)
+        .sort({ usedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('userId', 'name email phone profileImage')
+        .populate('orderId', 'orderId orderStatus totalAmount');
+
+    const totalResults = await OfferUsage.countDocuments(filter);
+    const totalPages = Math.ceil(totalResults / limit);
+
+    return {
+        results: usage,
+        page,
+        limit,
+        totalPages,
+        totalResults,
+    };
 };
 
 module.exports = {
     createOffer,
     queryOffers,
-    getActiveOffers,
     getOfferById,
     updateOfferById,
     deleteOfferById,
+    toggleOfferStatus,
+    getAvailableOffers,
+    applyOffer,
+    getOfferUsageAnalytics
 };

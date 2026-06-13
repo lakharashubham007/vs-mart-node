@@ -20,6 +20,7 @@ const deliveryBoySchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    fcmToken: { type: String, trim: true },
     fcmTokens: [{ type: String, trim: true }]
 }, { timestamps: true });
 

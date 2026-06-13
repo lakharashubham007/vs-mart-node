@@ -20,7 +20,7 @@ const addonRoutes = require('../../modules/addons/addon.routes');
 const productRoutes = require('../../modules/products/product.routes');
 const taxRoutes = require('../../modules/taxes/tax.routes');
 const bannerRoutes = require('../../modules/banners/banner.routes');
-const offerRoutes = require('../../modules/offers/offer.routes');
+
 const orderRoutes = require('../../modules/orders/order.routes');
 const notificationRoutes = require('../../modules/notifications/notification.routes');
 const pushNotificationRoutes = require('../../modules/notifications/pushNotification.routes');
@@ -32,7 +32,10 @@ const privacyRoutes = require('../../modules/privacy/privacy.routes');
 const analyticsRoutes = require('../../modules/analytics/analytics.routes');
 const userRoutes = require('../../modules/users/user.routes');
 const paymentRoutes = require('../../modules/payment/payment.routes');
-
+const storyRoutes = require('../../modules/stories/story.routes');
+const cartRoutes = require('../../modules/carts/adminCart.routes');
+const deliveryConfigRoutes = require('../../modules/deliveryConfig/deliveryConfig.routes');
+const offerRoutes = require('../../modules/offers/offer.routes');
 
 router.get('/me', Authentication, authController.getMe);
 router.put('/update-profile', Authentication, upload.single('profileImage'), authController.updateProfile);
@@ -70,8 +73,9 @@ router.use('/privacy', privacyRoutes);
 router.use('/analytics', Authentication, analyticsRoutes);
 router.use('/users', Authentication, userRoutes);
 router.use('/payment', Authentication, paymentRoutes);
-
-
+router.use('/stories', storyRoutes);
+router.use('/carts', Authentication, cartRoutes);
+router.use('/delivery-configs', Authentication, deliveryConfigRoutes);
 
 
 //testing

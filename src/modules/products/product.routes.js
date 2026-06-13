@@ -6,12 +6,8 @@ const Authorization = require('../../middlewares/authorization.middleware');
 
 const router = express.Router();
 
-// Wrapper for upload to match user's 'upload' naming in snippet
 // Product image upload configuration
-const upload = multerUpload.fields([
-    { name: 'image', maxCount: 1 },
-    { name: 'images', maxCount: 10 }
-]);
+const upload = multerUpload.any();
 
 // Routes for Product Operations
 router.post("/create-product", upload, Authentication, Authorization, productsController.createProduct);

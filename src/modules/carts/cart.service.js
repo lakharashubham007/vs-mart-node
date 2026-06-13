@@ -3,11 +3,67 @@ const Product = require('../products/product.model');
 const ProductVariant = require('../products/productVariant.model');
 const stockService = require('../stock/stock.service');
 const mongoose = require('mongoose');
+const cartHistoryService = require('./cartHistory.service');
 
 /**
  * Cart Service for handling business logic related to shopping carts.
  */
 class CartService {
+    /**
+     * [LIGHTWEIGHT] Update or create an item in the cart.
+     * NO stock check, NO summary, NO FIFO here. (Lazy-checked at summary/checkout)
+     */
+    async updateItemLight(userId, productId, variantId, quantity) {
+        if (!productId) throw new Error('productId is required');
+
+        const query = { userId, productId, variantId: variantId || null };
+        
+        // Remove from cart if quantity is 0 or less
+        if (quantity <= 0) {
+            return await Cart.findOneAndDelete(query);
+        }
+
+        // Lightweight upsert
+        return await Cart.findOneAndUpdate(
+            query,
+            { $set: { quantity } },
+            { new: true, upsert: true }
+        );
+    }
+
+    /**
+     * [LIGHTWEIGHT] Bulk update multiple items (Batch Sync).
+     */
+    async bulkUpdateItems(userId, updates) {
+        if (!Array.isArray(updates)) throw new Error('Updates must be an array');
+
+        const operations = updates.map(up => {
+            const query = { 
+                userId, 
+                productId: up.productId, 
+                variantId: up.variantId || null 
+            };
+
+            if (up.quantity <= 0) {
+                return {
+                    deleteOne: { filter: query }
+                };
+            }
+
+            return {
+                updateOne: {
+                    filter: query,
+                    update: { $set: { quantity: up.quantity } },
+                    upsert: true
+                }
+            };
+        });
+
+        if (operations.length === 0) return { success: true };
+
+        return await Cart.bulkWrite(operations);
+    }
+
     /**
      * Add or update an item in the cart.
      */
@@ -69,6 +125,15 @@ class CartService {
             cartItem.stockInId = stockInId;
             await cartItem.save();
         }
+
+        await cartHistoryService.logAction({
+            userId,
+            productId,
+            variantId,
+            actionType: 'ADD',
+            quantity: totalRequestedQty,
+            previousQuantity: currentCartQty
+        });
 
         return cartItem;
     }
@@ -232,6 +297,15 @@ class CartService {
             { new: true }
         );
 
+        await cartHistoryService.logAction({
+            userId,
+            productId: cartItemRecord.productId,
+            variantId: cartItemRecord.variantId,
+            actionType: 'UPDATE',
+            quantity,
+            previousQuantity: cartItemRecord.quantity
+        });
+
         return cartItem;
     }
 
@@ -243,6 +317,16 @@ class CartService {
         if (!cartItem) {
             throw new Error('Cart item not found');
         }
+
+        await cartHistoryService.logAction({
+            userId,
+            productId: cartItem.productId,
+            variantId: cartItem.variantId,
+            actionType: 'REMOVE',
+            quantity: 0,
+            previousQuantity: cartItem.quantity
+        });
+
         return cartItem;
     }
 

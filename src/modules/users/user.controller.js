@@ -1,6 +1,20 @@
 const userService = require('./user.service');
 const { deleteFromCloudinary } = require('../../utils/image.util');
 
+exports.googleLogin = async (req, res) => {
+    try {
+        const { idToken, fcmToken } = req.body;
+        const result = await userService.googleLogin(idToken, fcmToken);
+        res.status(200).json({ 
+            success: true, 
+            message: 'Google login successful', 
+            data: result 
+        });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
 exports.login = async (req, res) => {
     try {
         const { phone } = req.body;
@@ -114,11 +128,12 @@ exports.deleteAddress = async (req, res) => {
 exports.updateProfile = async (req, res) => {
     try {
         const userId = req.user._id;
-        const { name, email } = req.body;
+        const { name, email, phone } = req.body;
         const updateData = {};
 
         if (name !== undefined) updateData.name = name.trim();
         if (email !== undefined) updateData.email = email.trim();
+        if (phone !== undefined) updateData.phone = phone.trim();
         const User = require('./user.model');
         const existingUser = await User.findById(userId);
         if (!existingUser) {
@@ -285,20 +300,26 @@ exports.saveFcmToken = async (req, res) => {
         const userId = req.user._id;
         const { token } = req.body;
 
-        if (!token) {
-            return res.status(400).json({ success: false, message: 'FCM token is required' });
+        // -- LOG: Trace start --
+        console.log(`📡 [FCM Controller: Customer] User ${userId} is ${token ? 'Saving' : 'CLEARING'} token: ${token ? token.slice(-6) : 'N/A'}`);
+
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        if (!token || token === '') {
+            // CLEARING MODE: Purge everything for this user
+            user.fcmToken = null;
+            user.fcmTokens = []; 
+            await user.save();
+            return res.status(200).json({ success: true, message: 'FCM tokens cleared successfully' });
         }
 
-        // -- LOG: Trace start --
-        console.log("Saving token:", token, "CUSTOMER");
-
+        // BINDING MODE
         // 1. Strict Switch Logic (Unbind others)
         await authService.unbindFcmToken(token);
 
         // 2. BIND: Save to User profile
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ message: "User not found" });
-
+        user.fcmToken = token;
         if (!user.fcmTokens.includes(token)) {
             user.fcmTokens.push(token);
         }

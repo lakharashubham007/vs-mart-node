@@ -103,6 +103,20 @@ exports.assignDelivery = async (req, res) => {
                 senderRole: 'admin'
             });
 
+            // --- ADMIN NOTIFICATION (Live & Push) ---
+            await notificationService.notifyAllAdmins({
+                title: '🚚 Order Assigned',
+                body: `Order #VS${shortOrderId} has been assigned to ${deliveryBoy.firstName}.`,
+                data: {
+                    type: 'NEW_ASSIGNMENT',
+                    screen: 'AdminOrders',
+                    orderId: order._id.toString()
+                },
+                senderId: req.user?._id,
+                senderName: req.user?.name || 'Admin',
+                senderRole: 'admin'
+            });
+
         } catch (notifErr) {
             console.error('Failed to send assignment notifications:', notifErr);
         }
@@ -229,35 +243,25 @@ exports.updateAssignmentStatus = async (req, res) => {
         try {
             const orderNum = assignment.orderNumber || assignment.orderId.toString().slice(-6).toUpperCase();
             
-            // --- ADMIN NOTIFICATION (For PICKED and DELIVERED) ---
+            // --- ADMIN NOTIFICATION (For PICKED and DELIVERED - Live & Push) ---
             if (status === 'PICKED' || status === 'DELIVERED') {
                 const adminTitle = status === 'PICKED' ? '📦 Order Picked Up' : '✅ Order Delivered';
                 const adminBody = status === 'PICKED' 
                     ? `Order #VS${orderNum} has been picked up by ${assignment.deliveryBoyName}.`
                     : `Order #VS${orderNum} has been delivered successfully by ${assignment.deliveryBoyName}.`;
 
-                // Fetch all active Super Admins
-                const Role = require('../roles/role.model');
-                const superAdminRole = await Role.findOne({ name: { $regex: /^super\s*admin$/i } }).lean();
-                if (superAdminRole) {
-                    const admins = await Admin.find({ roleId: superAdminRole._id, status: true }).select('_id').lean();
-                    for (const admin of admins) {
-                        await notificationService.sendNotification({
-                            userId: admin._id,
-                            role: 'admin',
-                            title: adminTitle,
-                            body: adminBody,
-                            data: {
-                                type: 'ORDER_STATUS_UPDATE',
-                                screen: 'AdminOrders',
-                                orderId: assignment.orderId.toString()
-                            },
-                            senderId: assignment.deliveryBoyId,
-                            senderName: assignment.deliveryBoyName,
-                            senderRole: 'delivery_boy'
-                        });
-                    }
-                }
+                await notificationService.notifyAllAdmins({
+                    title: adminTitle,
+                    body: adminBody,
+                    data: {
+                        type: 'ORDER_STATUS_UPDATE',
+                        screen: 'AdminOrders',
+                        orderId: assignment.orderId.toString()
+                    },
+                    senderId: assignment.deliveryBoyId,
+                    senderName: assignment.deliveryBoyName,
+                    senderRole: 'delivery_boy'
+                });
             }
 
             // --- CUSTOMER NOTIFICATION (Only for DELIVERED) ---

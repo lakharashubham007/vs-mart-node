@@ -2,31 +2,44 @@ const mongoose = require('mongoose');
 
 const offerSchema = new mongoose.Schema({
     title: { type: String, required: true },
-    description: { type: String },
-    image: { type: String, required: true },
-
+    code: { type: String, unique: true, sparse: true },
+    type: {
+        type: String,
+        enum: ['OFFER', 'AUTO'],
+        required: true
+    },
     discountType: {
         type: String,
-        enum: ['Percentage', 'Fixed'],
-        default: 'Percentage'
+        enum: ['PERCENTAGE', 'FLAT', 'FREE_PRODUCT', 'FREE_DELIVERY'],
+        required: true
     },
     discountValue: { type: Number, default: 0 },
+    freeProductId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+    freeProductVariantId: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant' },
 
-    linkType: {
+    applicableType: {
         type: String,
-        enum: ['Product', 'Category', 'External', 'None'],
-        default: 'None'
+        enum: ['ALL', 'PRODUCT', 'CATEGORY'],
+        default: 'ALL'
     },
-    linkId: { type: String }, // MongoDB ID or URL
+    productIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
+    categoryIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Category' }],
+    variantIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant' }],
 
-    startDate: { type: Date, default: Date.now },
-    expiryDate: { type: Date },
+    minOrderAmount: { type: Number, default: 0 },
+    maxDiscount: { type: Number }, // for percentage
 
+    usageLimit: { type: Number, default: 0 }, // 0 means unlimited
+    perUserLimit: { type: Number, default: 1 },
+
+    validFrom: { type: Date, required: true },
+    validTo: { type: Date, required: true },
+
+    isFirstOrderOnly: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
-    order: { type: Number, default: 0 },
-
     isDeleted: { type: Boolean, default: false },
 
+    usedCount: { type: Number, default: 0 },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' }
 }, {

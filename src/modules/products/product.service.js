@@ -76,6 +76,13 @@ const injectStockData = async (products) => {
                 };
                 variant.inventory = { quantity: variantQty, minStock: variant.minStock };
 
+                // Map database flat images into standard images object: { thumbnail, gallery }
+                const varImgs = Array.isArray(variant.images) ? variant.images : [];
+                variant.images = {
+                    thumbnail: variant.thumbnail || '',
+                    gallery: varImgs
+                };
+
                 // If this is the first variant with stock, or we haven't found any stock yet and it's the first variant, 
                 // promote its pricing to the top level for preview/filtering.
                 if (!leadVariantFound && (variantQty > 0 || !product.pricing)) {
@@ -111,6 +118,7 @@ const injectStockData = async (products) => {
 exports.createProduct = async (productData, files, user) => {
     const data = { ...productData };
     const uploadedImages = [];
+    const variantFilesMap = {};
 
     // Map legacy frontend field names to new model names
     if (data.categoryId) data.category = data.categoryId;
@@ -119,15 +127,33 @@ exports.createProduct = async (productData, files, user) => {
 
     // Handle images
     data.images = { thumbnail: '', gallery: [] };
-    if (files) {
-        if (files.image) {
-            data.images.thumbnail = files.image[0].path;
-            uploadedImages.push(data.images.thumbnail);
-        }
-        if (files.images) {
-            data.images.gallery = files.images.map(file => file.path);
-            uploadedImages.push(...data.images.gallery);
-        }
+    if (Array.isArray(files)) {
+        files.forEach(file => {
+            if (file.fieldname === 'image') {
+                data.images.thumbnail = file.path;
+                uploadedImages.push(file.path);
+            } else if (file.fieldname === 'images') {
+                data.images.gallery.push(file.path);
+                uploadedImages.push(file.path);
+            } else {
+                // Parse variant dynamic field names e.g., variants[0][thumbnail] or variants[1][images]
+                const match = file.fieldname.match(/^variants\[(\d+)\]\[(thumbnail|images)\]$/);
+                if (match) {
+                    const idx = parseInt(match[1]);
+                    const type = match[2];
+                    if (!variantFilesMap[idx]) {
+                        variantFilesMap[idx] = { thumbnail: null, images: [] };
+                    }
+                    if (type === 'thumbnail') {
+                        variantFilesMap[idx].thumbnail = file.path;
+                        uploadedImages.push(file.path);
+                    } else if (type === 'images') {
+                        variantFilesMap[idx].images.push(file.path);
+                        uploadedImages.push(file.path);
+                    }
+                }
+            }
+        });
     }
 
     try {
@@ -141,6 +167,23 @@ exports.createProduct = async (productData, files, user) => {
                 }
             }
         });
+
+        // Enrich variants with uploaded files before sorting
+        if (Array.isArray(data.variants)) {
+            data.variants.forEach((v, idx) => {
+                const varFiles = variantFilesMap[idx];
+                v.images = [];
+                v.thumbnail = '';
+                if (varFiles) {
+                    if (varFiles.thumbnail) {
+                        v.thumbnail = varFiles.thumbnail;
+                    }
+                    if (varFiles.images && varFiles.images.length > 0) {
+                        v.images = varFiles.images;
+                    }
+                }
+            });
+        }
 
         // Ensure SKU for Single product if missing
         if (data.productType === 'Single' && data.pricing && !data.pricing.sku) {
@@ -250,6 +293,8 @@ exports.createProduct = async (productData, files, user) => {
                     variantTypeId: attr.variantTypeId,
                     valueId: attr.valueId
                 })),
+                thumbnail: v.thumbnail || '',
+                images: v.images || [],
                 qrCode: '', // Placeholder
                 minStock: Number(v.minStock) || 0,
                 createdBy: user?._id
@@ -567,19 +612,42 @@ exports.updateProduct = async (id, productData, files, user) => {
         const existingProduct = await Product.findById(id).session(session);
         if (!existingProduct) throw new Error('Product not found');
 
+        const variantFilesMap = {};
+        const uploadedImages = [];
+
         // Handle images
-        if (files) {
-            const newImages = { ...existingProduct.images };
+        if (Array.isArray(files)) {
+            const newImages = existingProduct.images ? { ...existingProduct.images } : { thumbnail: '', gallery: [] };
             const oldImagesToDelete = [];
-            if (files.image) {
-                if (newImages.thumbnail) oldImagesToDelete.push(newImages.thumbnail);
-                newImages.thumbnail = files.image[0].path;
-            }
-            if (files.images) {
-                // If appending to gallery, we don't necessarily delete
-                const gallery = files.images.map(file => file.path);
-                newImages.gallery = [...(newImages.gallery || []), ...gallery];
-            }
+
+            files.forEach(file => {
+                if (file.fieldname === 'image') {
+                    if (newImages.thumbnail) oldImagesToDelete.push(newImages.thumbnail);
+                    newImages.thumbnail = file.path;
+                    uploadedImages.push(file.path);
+                } else if (file.fieldname === 'images') {
+                    newImages.gallery = [...(newImages.gallery || []), file.path];
+                    uploadedImages.push(file.path);
+                } else {
+                    // Parse variant dynamic field names e.g., variants[0][thumbnail] or variants[1][images]
+                    const match = file.fieldname.match(/^variants\[(\d+)\]\[(thumbnail|images)\]$/);
+                    if (match) {
+                        const idx = parseInt(match[1]);
+                        const type = match[2];
+                        if (!variantFilesMap[idx]) {
+                            variantFilesMap[idx] = { thumbnail: null, images: [] };
+                        }
+                        if (type === 'thumbnail') {
+                            variantFilesMap[idx].thumbnail = file.path;
+                            uploadedImages.push(file.path);
+                        } else if (type === 'images') {
+                            variantFilesMap[idx].images.push(file.path);
+                            uploadedImages.push(file.path);
+                        }
+                    }
+                }
+            });
+
             data.images = newImages;
             if (oldImagesToDelete.length > 0) {
                 await deleteFromCloudinary(oldImagesToDelete);
@@ -605,6 +673,37 @@ exports.updateProduct = async (id, productData, files, user) => {
                 }
             }
         });
+
+        // Enrich variants with uploaded and existing files before sync
+        if (Array.isArray(data.variants)) {
+            data.variants.forEach((v, idx) => {
+                let existingImgs = [];
+                if (Array.isArray(v.existingImages)) {
+                    existingImgs = v.existingImages;
+                } else if (typeof v.existingImages === 'string') {
+                    try {
+                        existingImgs = JSON.parse(v.existingImages) || [];
+                    } catch (e) {
+                        existingImgs = [];
+                    }
+                } else if (Array.isArray(v.images)) {
+                    existingImgs = v.images;
+                }
+
+                v.images = existingImgs;
+                v.thumbnail = v.thumbnail || v.existingThumbnail || '';
+
+                const varFiles = variantFilesMap[idx];
+                if (varFiles) {
+                    if (varFiles.thumbnail) {
+                        v.thumbnail = varFiles.thumbnail;
+                    }
+                    if (varFiles.images && varFiles.images.length > 0) {
+                        v.images = [...v.images, ...varFiles.images];
+                    }
+                }
+            });
+        }
 
         // Resolve Names from IDs...
         const categoryId = (data.category || data.categoryId || existingProduct.categoryId) || undefined;
@@ -710,6 +809,8 @@ exports.updateProduct = async (id, productData, files, user) => {
                         variantTypeId: attr.variantTypeId,
                         valueId: attr.valueId
                     })),
+                    thumbnail: v.thumbnail || '',
+                    images: v.images || [],
                     minStock: Number(v.minStock) || 0,
                     isDeleted: false,
                     updatedBy: user?._id
@@ -884,6 +985,14 @@ exports.deleteProduct = async (id) => {
         const imagesToDelete = [];
         if (product.images?.thumbnail) imagesToDelete.push(product.images.thumbnail);
         if (product.images?.gallery?.length > 0) imagesToDelete.push(...product.images.gallery);
+
+        // Also delete variant images
+        if (variants && variants.length > 0) {
+            variants.forEach(v => {
+                if (v.thumbnail) imagesToDelete.push(v.thumbnail);
+                if (v.images && v.images.length > 0) imagesToDelete.push(...v.images);
+            });
+        }
         
         if (imagesToDelete.length > 0) {
             await deleteFromCloudinary(imagesToDelete);

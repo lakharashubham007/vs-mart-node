@@ -58,6 +58,8 @@ const orderSchema = new mongoose.Schema({
         enum: ['ASSIGNED', 'PICKED', 'DELIVERED', 'CANCELLED'],
         default: 'ASSIGNED'
     },
+    idempotencyKey: { type: String, index: true, sparse: true },
+    shippingAddressId: { type: mongoose.Schema.Types.ObjectId, ref: 'User.addresses' },
     placedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 

@@ -2,6 +2,80 @@ const User = require('./user.model');
 const jwt = require('jsonwebtoken');
 const authService = require('../auth/auth.service');
 const { deleteFromCloudinary } = require('../../utils/image.util');
+const { OAuth2Client } = require('google-auth-library');
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+exports.googleLogin = async (idToken, fcmToken = null) => {
+    if (!idToken) throw new Error('Google ID Token is required');
+
+    let payload;
+    try {
+        const ticket = await client.verifyIdToken({
+            idToken,
+            audience: process.env.GOOGLE_CLIENT_ID
+        });
+        payload = ticket.getPayload();
+    } catch (error) {
+        console.error('Google Token Verification Error:', error);
+        throw new Error('Invalid Google Token');
+    }
+
+    const { email, name, picture, sub: googleId } = payload;
+    if (!email) throw new Error('Email not provided by Google');
+
+    // 1. Find user by email (Account Merging Logic)
+    let user = await User.findOne({ email, isDeleted: { $ne: true } });
+
+    if (user) {
+        // If user exists, ensure googleId and loginType are updated if not already set
+        if (!user.googleId) user.googleId = googleId;
+        user.loginType = 'google';
+        if (!user.profileImage && picture) user.profileImage = picture;
+        if (!user.name && name) user.name = name;
+        await user.save();
+    } else {
+        // 2. Create new user if doesn't exist
+        user = await User.create({
+            email,
+            name,
+            profileImage: picture,
+            googleId,
+            loginType: 'google',
+            status: true
+        });
+    }
+
+    if (!user.status) {
+        throw new Error('User account is disabled. Contact support.');
+    }
+
+    // 3. Generate Tokens (Matching verifyOTP pattern)
+    const accessToken = jwt.sign(
+        { id: user._id, phone: user.phone || null, email: user.email },
+        process.env.JWT_SECRET || 'secret_key',
+        { expiresIn: '2d' }
+    );
+
+    const refreshToken = jwt.sign(
+        { id: user._id, type: 'refresh' },
+        process.env.JWT_SECRET || 'secret_key',
+        { expiresIn: '15d' }
+    );
+
+    user.refreshToken = refreshToken;
+
+    // 4. Save FCM Token if provided
+    if (fcmToken) {
+        await authService.unbindFcmToken(fcmToken);
+        await User.updateOne(
+            { _id: user._id },
+            { $addToSet: { fcmTokens: fcmToken }, $set: { fcmToken } }
+        );
+    }
+
+    return { accessToken, refreshToken, user };
+};
 
 exports.loginUser = async (phone) => {
     // Check if user exists
@@ -86,13 +160,12 @@ exports.verifyOTP = async (phone, otp, fcmToken = null) => {
     // Save FCM Token if provided (Strict Multi-Token Binding)
     if (fcmToken) {
         await authService.unbindFcmToken(fcmToken);
-        if (!user.fcmTokens.includes(fcmToken)) {
-            user.fcmTokens.push(fcmToken);
-        }
+        await User.updateOne(
+            { _id: user._id },
+            { $addToSet: { fcmTokens: fcmToken }, $set: { fcmToken } }
+        );
         console.log("Saved token:", fcmToken, "Customer (via OTP Verify)");
     }
-
-    await user.save();
 
     console.log('Backend verifyOTP returning:', { accessToken, refreshToken, userPhone: user.phone });
     return { accessToken, refreshToken, user };
@@ -291,3 +364,4 @@ exports.registerAdminCustomer = async (userData) => {
 
     return newUser;
 };
+

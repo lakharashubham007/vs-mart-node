@@ -3,10 +3,22 @@ const mongoose = require('mongoose');
 const bannerSchema = new mongoose.Schema({
     title: { type: String, required: true },
     image: { type: String, required: true },
-    link: { type: String, default: '' }, // Deep link or external URL
+    type: { 
+        type: String, 
+        enum: ["HOME_BANNER", "OFFER_BANNER"],
+        required: true
+    },
 
     publishDate: { type: Date, default: Date.now },
     expiryDate: { type: Date },
+
+    redirectLink: { type: String, default: '' }, // For HOME_BANNER external links or OFFER_BANNER fallback
+    linkType: {
+        type: String,
+        enum: ['Product', 'Category', 'External', 'None'],
+        default: 'None'
+    },
+    linkId: { type: String }, // MongoDB ID for Product/Category
 
     isActive: { type: Boolean, default: true },
     order: { type: Number, default: 0 },

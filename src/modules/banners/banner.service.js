@@ -22,10 +22,14 @@ const createBanner = async (bannerBody) => {
  * Query for banners
  */
 const queryBanners = async (filter = {}, options = {}) => {
-    const { search, limit = 10, page = 1 } = options;
+    const { search, limit = 10, page = 1, type } = options;
     const skip = (page - 1) * limit;
 
     let finalFilter = { ...filter, isDeleted: { $ne: true } };
+
+    if (type) {
+        finalFilter.type = type;
+    }
 
     if (search) {
         finalFilter.$or = [
@@ -55,11 +59,12 @@ const queryBanners = async (filter = {}, options = {}) => {
 
 /**
  * Get active banners for mobile app
+ * @param {string} type - HOME_BANNER or OFFER_BANNER
  * @returns {Promise<Array<Banner>>}
  */
-const getActiveBanners = async () => {
+const getActiveBanners = async (type) => {
     const now = new Date();
-    return Banner.find({
+    const filter = {
         isActive: true,
         $or: [
             { expiryDate: { $exists: false } },
@@ -67,7 +72,13 @@ const getActiveBanners = async () => {
             { expiryDate: { $gt: now } }
         ],
         publishDate: { $lte: now }
-    }).sort({ order: 1 });
+    };
+
+    if (type) {
+        filter.type = type;
+    }
+
+    return Banner.find(filter).sort({ order: 1 });
 };
 
 /**

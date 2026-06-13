@@ -30,10 +30,11 @@ exports.login = async (email, password, fcmToken) => {
     // Save FCM Token if provided (Strict Multi-Token Binding)
     if (fcmToken) {
         await exports.unbindFcmToken(fcmToken);
-        if (!admin.fcmTokens.includes(fcmToken)) {
-            admin.fcmTokens.push(fcmToken);
-        }
-        await admin.save();
+        // Add to array (ensures no duplicates via logic or $addToSet if we used update)
+        await Admin.updateOne(
+            { _id: admin._id },
+            { $addToSet: { fcmTokens: fcmToken }, $set: { fcmToken } }
+        );
         console.log("Saved token:", fcmToken, "Admin (via Login)");
     }
 
@@ -77,10 +78,10 @@ exports.deliveryBoyLogin = async (email, password, fcmToken) => {
     // Save FCM Token if provided (Strict Multi-Token Binding)
     if (fcmToken) {
         await exports.unbindFcmToken(fcmToken);
-        if (!boy.fcmTokens.includes(fcmToken)) {
-            boy.fcmTokens.push(fcmToken);
-        }
-        await boy.save();
+        await DeliveryBoy.updateOne(
+            { _id: boy._id },
+            { $addToSet: { fcmTokens: fcmToken }, $set: { fcmToken } }
+        );
         console.log("Saved token:", fcmToken, "DeliveryBoy (via Login)");
     }
 
@@ -145,10 +146,11 @@ exports.staffLogin = async (email, password, fcmToken) => {
     // Save FCM Token if provided (Strict Multi-Token Binding)
     if (fcmToken) {
         await exports.unbindFcmToken(fcmToken);
-        if (!user.fcmTokens.includes(fcmToken)) {
-            user.fcmTokens.push(fcmToken);
-        }
-        await user.save();
+        const Model = isDeliveryBoy ? DeliveryBoy : Admin;
+        await Model.updateOne(
+            { _id: user._id },
+            { $addToSet: { fcmTokens: fcmToken }, $set: { fcmToken } }
+        );
         console.log("Saved token:", fcmToken, `${role} (via Unified Login)`);
     }
 
@@ -239,9 +241,14 @@ exports.unbindFcmToken = async (fcmToken) => {
         console.log(`📡 [FCM Unbind] Clearing token ${fcmToken.slice(-6)} from all other profiles...`);
         
         await Promise.all([
-            Admin.updateMany({ fcmToken }, { fcmToken: null }),
-            DeliveryBoy.updateMany({ fcmToken }, { fcmToken: null }),
-            User.updateMany({ fcmToken }, { fcmToken: null })
+            Admin.updateMany({ fcmTokens: fcmToken }, { $pull: { fcmTokens: fcmToken } }),
+            Admin.updateMany({ fcmToken: fcmToken }, { $set: { fcmToken: null } }),
+            
+            DeliveryBoy.updateMany({ fcmTokens: fcmToken }, { $pull: { fcmTokens: fcmToken } }),
+            DeliveryBoy.updateMany({ fcmToken: fcmToken }, { $set: { fcmToken: null } }),
+            
+            User.updateMany({ fcmTokens: fcmToken }, { $pull: { fcmTokens: fcmToken } }),
+            User.updateMany({ fcmToken: fcmToken }, { $set: { fcmToken: null } })
         ]);
         
         console.log(`✅ [FCM Unbind] Token freed from any old associations.`);
@@ -253,30 +260,96 @@ exports.unbindFcmToken = async (fcmToken) => {
 exports.updateFcmToken = async (userId, fcmToken) => {
     if (!userId) throw new Error('User ID is required');
     
-    // Shared Binding: save token without clearing it from other roles
-    if (fcmToken && fcmToken !== '') {
-        // unbinding disabled to support multi-role device sessions
+    console.log(`📡 [AuthService] Updating FCM Token for User ${userId}: ${fcmToken ? fcmToken.slice(-6) : 'CLEARING'}`);
+
+    // If clearing, we use the logout scrub logic for safety
+    if (!fcmToken || fcmToken === '') {
+        return await exports.logout(userId, null);
     }
 
-    // 1. Try updating Admin collection
+    // 1. Switch Safety
+    await exports.unbindFcmToken(fcmToken);
+
+    // 2. Try updating Admin collection
     let user = await Admin.findById(userId);
     if (user) {
-        console.log("Saving token:", fcmToken, "Admin");
-        user.fcmToken = fcmToken || null;
-        await user.save();
-        console.log("Saved user:", { id: user._id, name: user.name, fcmToken: user.fcmToken });
+        await Admin.updateOne(
+            { _id: userId },
+            { $addToSet: { fcmTokens: fcmToken }, $set: { fcmToken } }
+        );
         return { role: 'Admin' };
     }
 
-    // 2. Try updating DeliveryBoy collection
+    // 3. Try updating DeliveryBoy collection
     user = await DeliveryBoy.findById(userId);
     if (user) {
-        console.log("Saving token:", fcmToken, "DeliveryBoy");
-        user.fcmToken = fcmToken || null;
-        await user.save();
-        console.log("Saved user:", { id: user._id, name: user.firstName, fcmToken: user.fcmToken });
+        await DeliveryBoy.updateOne(
+            { _id: userId },
+            { $addToSet: { fcmTokens: fcmToken }, $set: { fcmToken } }
+        );
         return { role: 'DeliveryBoy' };
     }
 
     throw new Error('User not found in any staff collection');
+};
+
+exports.logout = async (userId, fcmToken) => {
+    console.log(`📡 [AuthService] Processing Secure Logout:
+        - UserID: ${userId}
+        - FCM Token: ${fcmToken ? fcmToken.slice(-6) : 'NOT_PROVIDED'}`);
+    
+    if (mongoose.connection.readyState !== 1) {
+        throw new Error('Database connection is not ready');
+    }
+
+    try {
+        const cleanupPromises = [];
+
+        // 1. If we have a specific token, remove it from EVERY possible user record in the system
+        if (fcmToken && fcmToken !== '') {
+            console.log(`🗑️ [AuthService] Global Scrub: Removing token ${fcmToken.slice(-6)} from all collections...`);
+            cleanupPromises.push(
+                Admin.updateMany({ fcmTokens: fcmToken }, { $pull: { fcmTokens: fcmToken } }),
+                Admin.updateMany({ fcmToken: fcmToken }, { $set: { fcmToken: null } }),
+                
+                DeliveryBoy.updateMany({ fcmTokens: fcmToken }, { $pull: { fcmTokens: fcmToken } }),
+                DeliveryBoy.updateMany({ fcmToken: fcmToken }, { $set: { fcmToken: null } }),
+                
+                User.updateMany({ fcmTokens: fcmToken }, { $pull: { fcmTokens: fcmToken } }),
+                User.updateMany({ fcmToken: fcmToken }, { $set: { fcmToken: null } })
+            );
+        }
+
+        // 2. If we have both User ID and Token, we can do a targeted pull to be extra safe
+        // (Though the global scrub above already covers this)
+        if (userId && fcmToken && fcmToken !== '') {
+            console.log(`🧼 [AuthService] Targeted Scrub: Removing token ${fcmToken.slice(-6)} from User ${userId}`);
+            const userPull = { 
+                $pull: { fcmTokens: fcmToken },
+                $set: { fcmToken: null }
+            };
+
+            cleanupPromises.push(
+                Admin.findByIdAndUpdate(userId, userPull),
+                DeliveryBoy.findByIdAndUpdate(userId, userPull),
+                User.findByIdAndUpdate(userId, userPull)
+            );
+        } else if (userId && (!fcmToken || fcmToken === '')) {
+            // ONLY if no token is provided do we purge all (as a fallback/force logout)
+            console.warn('⚠️ [AuthService] Logout called without token — purging ALL tokens for safety');
+            const userPurge = { $set: { fcmToken: null, fcmTokens: [] } };
+            cleanupPromises.push(
+                Admin.findByIdAndUpdate(userId, userPurge),
+                DeliveryBoy.findByIdAndUpdate(userId, userPurge),
+                User.findByIdAndUpdate(userId, userPurge)
+            );
+        }
+
+        await Promise.all(cleanupPromises);
+        console.log(`✅ [AuthService] Secure logout successful for user ${userId || 'TOKEN_ONLY'}`);
+        return { success: true };
+    } catch (error) {
+        console.error('❌ [AuthService] Logout cleanup failed:', error);
+        throw error;
+    }
 };

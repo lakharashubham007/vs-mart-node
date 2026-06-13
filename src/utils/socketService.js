@@ -93,9 +93,16 @@ const broadcastToAdmin = (event, data) => {
     }
 };
 
+const isUserConnected = (userId) => {
+    if (!io) return false;
+    const room = io.sockets.adapter.rooms.get(`user_${userId}`);
+    return room ? room.size > 0 : false;
+};
+
 module.exports = {
     init,
     broadcastNewOrder,
     emitToUser,
-    broadcastToAdmin
+    broadcastToAdmin,
+    isUserConnected
 };

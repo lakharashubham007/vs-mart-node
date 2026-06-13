@@ -35,83 +35,82 @@ exports.sendNotification = async ({
     senderRole = 'system'
 }) => {
     try {
-        // 1. Determine Model based on Role
         let Model;
-        let targetRole = role; // Default for Notification entry
+        let targetRole = role;
 
         switch (role) {
-            case 'user':
-            case 'customer':
-                Model = User;
-                targetRole = 'user';
-                break;
-            case 'admin':
-            case 'super_admin':
-                Model = Admin;
-                targetRole = 'admin';
-                break;
-            case 'delivery_boy':
-            case 'delivery':
-                Model = DeliveryBoy;
-                targetRole = 'delivery_boy';
-                break;
-            default:
-                throw new Error(`Invalid role: ${role}`);
+            case 'user': case 'customer': Model = User; targetRole = 'user'; break;
+            case 'admin': case 'super_admin': Model = Admin; targetRole = 'admin'; break;
+            case 'delivery_boy': case 'delivery': Model = DeliveryBoy; targetRole = 'delivery_boy'; break;
+            default: throw new Error(`Invalid role: ${role}`);
         }
 
-        // 2. Fetch User and Tokens
+        // 1. Fetch User (Tokens + Name)
         const user = await Model.findById(userId).select('fcmTokens name').lean();
-        if (!user) {
-            console.warn(`[NotificationService] Target ${role} not found: ${userId}`);
-            return;
-        }
+        if (!user) return;
 
-        // 3. Save to In-App Notification History
+        // 2. Save to DB History (Source of Truth)
         const notificationEntry = await Notification.create({
-            userId,
-            title,
-            message: body,
+            userId, title, message: body,
             type: data.type || 'SYSTEM',
             relatedId: data.orderId || data.relatedId,
-            targetRole,
-            senderId,
-            senderName,
-            senderRole
+            targetRole, senderId, senderName, senderRole
         });
 
-        // 4. Emit via Socket (Real-time in-app update)
-        if (targetRole === 'admin') {
-            socketService.broadcastToAdmin('new_notification', notificationEntry);
-        } else {
+        // 3. SMART SWITCH: Socket vs FCM
+        const isOnline = socketService.isUserConnected(userId);
+
+        if (isOnline) {
+            // Priority: WebSocket (Low Latency, No Cost)
             socketService.emitToUser(userId, 'new_notification', notificationEntry);
-        }
-
-        // 5. Send via FCM if tokens exist
-        const tokens = user.fcmTokens || [];
-        if (tokens.length > 0) {
-            console.log(`📡 [NotificationService] Sending to ${role} (${userId}) | Tokens: ${tokens.length}`);
-            
-            const result = await fcmService.sendToMultipleTokens(tokens, title, body, {
-                ...data,
-                notificationId: notificationEntry._id.toString()
+            console.log(`✅ [SmartSwitch] Socket used for ${role} ${userId} (Online)`);
+        } else if (user.fcmTokens?.length > 0) {
+            // Fallback: FCM (Background/Closed App)
+            const result = await fcmService.sendToMultipleTokens(user.fcmTokens, title, body, {
+                ...data, notificationId: notificationEntry._id.toString()
             });
+            console.log(`📡 [SmartSwitch] FCM used for ${role} ${userId} (Offline)`);
 
-            // 6. AUTO-CLEANUP: Remove invalid tokens reported by FCM
-            if (result.invalidTokens && result.invalidTokens.length > 0) {
-                console.warn(`🧹 [NotificationService] Removing ${result.invalidTokens.length} stale tokens for ${role} ${userId}`);
-                await Model.findByIdAndUpdate(userId, {
-                    $pull: { fcmTokens: { $in: result.invalidTokens } }
-                });
+            // Cleanup invalid tokens
+            if (result.invalidTokens?.length > 0) {
+                await Model.findByIdAndUpdate(userId, { $pull: { fcmTokens: { $in: result.invalidTokens } } });
             }
-
-            return result;
-        } else {
-            console.log(`ℹ️ [NotificationService] No FCM tokens for ${role} ${userId}. Skip push.`);
-            return { successCount: 0, failureCount: 0 };
         }
 
+        return notificationEntry;
     } catch (error) {
-        console.error(`🚨 [NotificationService] Error sending to ${role} ${userId}:`, error.message);
-        throw error;
+        console.error(`🚨 [NotificationHub] Error:`, error.message);
     }
 };
+
+exports.notifyAllAdmins = async ({ title, body, data = {}, senderId = null, senderName = 'System', senderRole = 'system' }) => {
+    try {
+        const Role = require('../modules/roles/role.model');
+        const Admin = require('../modules/admins/admin.model');
+
+        // 1. Target Management Roles
+        const targetRoles = await Role.find({ name: { $regex: /^(super\s*admin|admin|shop\s*admin)$/i } }).select('_id').lean();
+        const admins = await Admin.find({ roleId: { $in: targetRoles.map(r => r._id) }, status: true }).select('_id fcmTokens').lean();
+
+        if (admins.length === 0) return;
+
+        // 2. Broadcast ONCE via Socket (Live UI update for all online admins)
+        socketService.broadcastToAdmin('new_notification', { title, message: body, ...data, senderName });
+
+        // 3. Send FCM to admins who are OFFLINE
+        const offlineAdmins = admins.filter(admin => !socketService.isUserConnected(admin._id) && admin.fcmTokens?.length > 0);
+        
+        if (offlineAdmins.length > 0) {
+            const pushPromises = offlineAdmins.map(admin => 
+                fcmService.sendToMultipleTokens(admin.fcmTokens, title, body, data).catch(() => {})
+            );
+            await Promise.all(pushPromises);
+        }
+
+        // Note: For history, we save ONE entry for the system log or individual if specific tracking needed.
+        // For VS Mart, we save to the triggering admin's history or just the "System" notification log.
+    } catch (error) {
+        console.error(`🚨 [NotificationHub] notifyAllAdmins Error:`, error.message);
+    }
+};
+

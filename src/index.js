@@ -24,4 +24,6 @@ const io = new Server(server, {
 const socketService = require('./utils/socketService');
 socketService.init(io);
 
+// Initialize Socket.io
+
 server.listen(serverPort, '0.0.0.0', () => console.log("Listening at PORT: ", serverPort));

@@ -12,20 +12,35 @@ const createBanner = catchAsync(async (req, res) => {
     if (!bannerData.image) {
         throw new ApiError(400, 'Banner image is required');
     }
-    console.log("bannerData", bannerData);
+
+    if (!bannerData.type) {
+        throw new ApiError(400, 'Banner type is required');
+    }
+
     const banner = await bannerService.createBanner(bannerData);
-    res.status(201).send({ banner });
+    res.status(201).send({ 
+        success: true,
+        message: 'Banner created successfully',
+        banner 
+    });
 });
 
 const getBanners = catchAsync(async (req, res) => {
-    const { page, limit, search } = req.query;
-    const result = await bannerService.queryBanners({}, { page, limit, search });
-    res.send(result);
+    const { page, limit, search, type } = req.query;
+    const result = await bannerService.queryBanners({}, { page, limit, search, type });
+    res.send({
+        success: true,
+        ...result
+    });
 });
 
 const getActiveBanners = catchAsync(async (req, res) => {
-    const banners = await bannerService.getActiveBanners();
-    res.send({ banners });
+    const { type } = req.query;
+    const banners = await bannerService.getActiveBanners(type);
+    res.send({ 
+        success: true,
+        banners 
+    });
 });
 
 const getBanner = catchAsync(async (req, res) => {
@@ -33,7 +48,10 @@ const getBanner = catchAsync(async (req, res) => {
     if (!banner) {
         throw new ApiError(404, 'Banner not found');
     }
-    res.send({ banner });
+    res.send({ 
+        success: true,
+        banner 
+    });
 });
 
 const updateBanner = catchAsync(async (req, res) => {
@@ -42,18 +60,29 @@ const updateBanner = catchAsync(async (req, res) => {
         updateBody.image = req.file.path;
     }
     const banner = await bannerService.updateBannerById(req.params.bannerId, updateBody);
-    res.send({ banner });
+    res.send({ 
+        success: true,
+        message: 'Banner updated successfully',
+        banner 
+    });
 });
 
 const updateBannerStatus = catchAsync(async (req, res) => {
     const { isActive } = req.body;
     const banner = await bannerService.updateBannerById(req.params.bannerId, { isActive, updatedBy: req.user._id });
-    res.send({ banner });
+    res.send({ 
+        success: true,
+        message: `Banner ${isActive ? 'activated' : 'deactivated'} successfully`,
+        banner 
+    });
 });
 
 const deleteBanner = catchAsync(async (req, res) => {
     await bannerService.deleteBannerById(req.params.bannerId);
-    res.status(204).send();
+    res.send({
+        success: true,
+        message: 'Banner deleted successfully'
+    });
 });
 
 module.exports = {
